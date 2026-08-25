@@ -39,7 +39,7 @@ export function AccessMnemonic() {
     let w = u.g.create_user("My Wallet", "", wallet);
     u.g.set_active_user(w);
 
-    navigate("/wallet/dash");
+    navigate("/balance");
   }
 
   return (

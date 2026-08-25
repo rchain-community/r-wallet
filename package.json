@@ -1,9 +1,8 @@
 {
-  "name": "gorki-wallet",
+  "name": "r-wallet",
   "type": "module",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://wallet.gorki.dev/",
   "dependencies": {
     "@grpc/grpc-js": "^1.10.8",
     "@monaco-editor/react": "^4.6.0",

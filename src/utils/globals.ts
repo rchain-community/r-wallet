@@ -6,7 +6,7 @@ import { type NodeContext } from "Context";
 const rnode = import("./rnode");
 
 export let built_in_nodes = [
-	...nw.gorki_nodes,
+	...nw.r_nodes,
 	...nw.local_nodes,
 ];
 
@@ -56,6 +56,21 @@ export async function explore_code(
 	if (!user) { return null; }
 	let url = ctx.get_readonly_url();
 	return await (await rnode).explore(url, code);
+}
+
+export async function faucet(
+	ctx: NodeContext
+) {
+	if (!user) { return null; }
+	if (!ctx.node.faucet) { return null; }
+	let url = ctx.get_validator_url();
+	const { faucet: faucet_funds } = await import("../api/faucet");
+	try {
+		const res = await faucet_funds(url, user.revAddr, ctx.node.faucet);
+		return { deployId: res.deployId, error: null };
+	} catch (err) {
+		return { deployId: null, error: u.error_string(err) };
+	}
 }
 
 export let user_list: u.UserWallet[] = [];

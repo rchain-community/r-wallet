@@ -1,4 +1,4 @@
-# Gorki Wallet
+# R Wallet
 
 ## Usage
 

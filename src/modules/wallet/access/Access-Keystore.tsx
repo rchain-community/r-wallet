@@ -63,7 +63,7 @@ export function AccessKeystore() {
     set_unlocking(u.OPERATION.DONE);
     let w = u.g.create_user("My Wallet", "", priv_wallet);
     u.g.set_active_user(w);
-    navigate("/wallet/dash");
+    navigate("/balance");
   }
 
   function handle_key(ev: KeyboardEvent) {

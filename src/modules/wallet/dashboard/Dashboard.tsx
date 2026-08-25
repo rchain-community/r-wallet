@@ -1,20 +1,23 @@
 import "./Dashboard.scss";
 import { useState, useEffect } from 'react';
-import { g, OPERATION, Unbox, wallet_is_metamask, useAsync, useNavigateIf, /*CoinGecko*/ } from 'utils';
+import { g, notif, OPERATION, Unbox, wallet_is_metamask, useAsync, useNavigateIf, /*CoinGecko*/ } from 'utils';
 import * as Components from 'components';
-import { useNodes } from "Context";
+import { useNodes, useLayout } from "Context";
 import { Icon } from "assets";
+import { BRAND } from "../../../config/branding";
 
 type Balance = Unbox<ReturnType<typeof g.check_balance>>;
 
 export function Dashboard() {
     const node_context = useNodes();
+    const layout = useLayout();
     let [name] = useState(g?.user?.name || "My Wallet");
     let balance = useAsync<Balance>({ balance: 0, error: null });
     let value = useAsync<number>(null);
+    let [faucet_op, set_faucet_op] = useState(OPERATION.INITIAL);
 
 
-    useNavigateIf(!g.user, "/");
+    useNavigateIf(!g.user, "/access");
     if (!g.user) return <></>;
 
     useEffect(() => {
@@ -23,6 +26,32 @@ export function Dashboard() {
 
     function get_balance() {
         balance.set(g.check_balance(node_context));
+    }
+
+    async function get_faucet() {
+        if (!g.user) return;
+        set_faucet_op(OPERATION.PENDING);
+        try {
+            const res = await g.faucet(node_context);
+            if (!res || res.error) {
+                layout.push_notif({
+                    group_id: "faucet-error",
+                    content: notif.info("Error", `Faucet failed!\n${res?.error ?? "Unknown error"}`)
+                });
+            } else {
+                layout.push_notif({
+                    group_id: "faucet-success",
+                    content: notif.info("Success!", "Faucet transfer sent. Your balance will update after the block is proposed.")
+                });
+                get_balance();
+            }
+        } catch (err) {
+            layout.push_notif({
+                group_id: "faucet-error",
+                content: notif.info("Error", `Faucet failed!\n${String(err)}`)
+            });
+        }
+        set_faucet_op(OPERATION.INITIAL);
     }
 
     function format_balance(val: number, divisor=100000000) {
@@ -55,7 +84,7 @@ export function Dashboard() {
         return <div>
             <span style={{marginRight: "1em"}}>
                 <span>1</span>
-                <span className="Alt">GOR</span>
+                <span className="Alt">REV</span>
             </span>
             <span>
                 <span>{format_balance(value.value, 1)}</span>
@@ -112,7 +141,7 @@ export function Dashboard() {
             </div>
 
             <div className="flex justify-between text-right">
-                <span className="flex-none">GOR&nbsp;</span>
+                <span className="flex-none">{BRAND.ticker}&nbsp;</span>
                 <span className="overflow-hidden text-ellipsis">{g.user.revAddr}</span>
             </div>
 
@@ -127,6 +156,21 @@ export function Dashboard() {
                 />
             </div>
         </div>
+
+        {node_context.node.faucet && (
+            <div className="mt-4 flex flex-col gap-2">
+                <p className="text-xs text-yellow-600 dark:text-yellow-400">DEV/TEST ONLY — funds from the devnet deployer.</p>
+                <Components.Spinner
+                    op={faucet_op}
+                    className="w-8 h-8"
+                    children_initial={
+                        <Components.Button onClick={get_faucet} disabled={!g.user}>
+                            FAUCET {node_context.node.faucet.amount} REV
+                        </Components.Button>
+                    }
+                />
+            </div>
+        )}
 
         <h3 className="mt-4">Network</h3>
         <Components.NodePicker />

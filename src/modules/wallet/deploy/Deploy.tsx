@@ -4,6 +4,8 @@ import { useNodes } from "Context";
 import * as Components from "components";
 import * as u from 'utils';
 import Editor, { loader, type EditorProps } from "@monaco-editor/react";
+import { rhoExprToJson } from "api";
+import { BRAND } from "../../../config/branding";
 import { snippets, snippet_apply, Snippet } from "./snippets";
 
 const snippet_keys = Object.keys(snippets) as Array<keyof typeof snippets>;
@@ -204,7 +206,7 @@ export function Deploy() {
     }
 
     set_err(res?.error);
-    set_msg(res?.expr ? JSON.stringify(res?.expr, null, 2) : res?.expr);
+    set_msg(res?.expr ? JSON.stringify(res?.expr.map(rhoExprToJson), null, 2) : res?.expr);
     set_op(u.OPERATION.INITIAL);
   }
 
@@ -226,7 +228,7 @@ export function Deploy() {
 
     return (<div className="flex justify-between">
       <p>Deployment cost:</p>
-      <span>{cost} ×10<sup>-8</sup> GOR</span>
+      <span>{cost} ×10<sup>-8</sup> {BRAND.ticker}</span>
     </div>)
   }
 
@@ -292,7 +294,7 @@ export function Deploy() {
               onChange={phlo_limit.write}
               onBlur={phlo_limit.correct}
             />
-            <p>×10<sup>-8</sup> GOR</p>
+            <p>×10<sup>-8</sup> {BRAND.ticker}</p>
           </label>
 
           <div className="flex justify-end items-center flex-wrap gap-2">
@@ -312,11 +314,7 @@ export function Deploy() {
 
                 <Components.Button
                   disabled={!code.value || phlo_limit.value <= 0}
-                  onClick={() =>
-                    {
-                      deploy();
-                      setTimeout(7000, propose);
-                    }}
+                  onClick={deploy}
                   >
                   ADMIN DEPLOY
                 </Components.Button>

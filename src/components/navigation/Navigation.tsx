@@ -2,6 +2,7 @@ import { useLocation, Link, Location } from 'react-router-dom';
 import { g, wallet_is_metamask, useTheme } from 'utils';
 import { Icon } from "assets";
 import * as Components from "components";
+import { BRAND } from "../../config/branding";
 
 interface NavLinkProps {
   to: string;
@@ -20,15 +21,17 @@ function NavLink(props: NavLinkProps) {
   </Link>
 }
 
+const WALLET_PATHS = ["/", "/balance", "/transfer", "/settings"];
+
 function WalletLinks() {
   const location = useLocation();
-  if (!location.pathname.startsWith("/wallet")) return;
+  if (!WALLET_PATHS.includes(location.pathname)) return;
 
   return <div className="flex flex-wrap gap-4 justify-center px-4 leading-none">
-    <NavLink to="/wallet/dash" label="DASHBOARD" loc={location} />
-    <NavLink to="/wallet/transfer" label="TRANSFER" loc={location} />
-    <NavLink to="/wallet/editor" label="RHOLANG EDITOR" loc={location} />
-    <NavLink to="/wallet/settings" label="SETTINGS" loc={location} hide_when={wallet_is_metamask(g.user)} />
+    <NavLink to="/" label="EDITOR" loc={location} />
+    <NavLink to="/balance" label="BALANCE" loc={location} />
+    <NavLink to="/transfer" label="TRANSFER" loc={location} />
+    <NavLink to="/settings" label="SETTINGS" loc={location} hide_when={wallet_is_metamask(g.user)} />
   </div>;
 }
 
@@ -63,7 +66,7 @@ export function Navigation() {
     <div className="flex flex-col gap-2 relative">
       {theme_switcher}
       <Link className="flex justify-center gap-4 mx-auto p-8" to="/">
-          <img className="h-12" src={import.meta.env.BASE_URL+"logo.svg"} alt="Gorki Wallet" />
+          <img className="h-12" src={import.meta.env.BASE_URL+"logo.svg"} alt={BRAND.name} />
       </Link>
       <WalletLinks />
     </div>

@@ -71,7 +71,7 @@ export function CreateKeystore() {
     if (!wallet) { return; }
     let user = u.g.create_user("My Wallet", "", wallet);
     u.g.set_active_user(user);
-    navigate("/wallet/dash");
+    navigate("/balance");
   }
 
   return (

@@ -3,6 +3,7 @@ import { useLayout, useNodes } from "Context";
 import * as u from 'utils';
 import { Icon } from "assets";
 import * as Components from "components";
+import { BRAND } from "../../../config/branding";
 
 export function Transfer() {
   let name = "";
@@ -95,7 +96,7 @@ export function Transfer() {
       <h3>From</h3>
 
       <div className="mb-2">
-        <p>Gorki Address</p>
+        <p>{BRAND.ticker} Address</p>
         <p className="font-mono ml-2 break-all">
           { u.g.user?.revAddr }
         </p>
@@ -116,7 +117,7 @@ export function Transfer() {
           onChange={amount.write}
           onBlur={amount.correct}
         />
-        <p>GOR</p>
+        <p>{BRAND.ticker}</p>
       </label>
 
       <Icon name="arrow" color="icon-base-50" className="self-center my-4" />

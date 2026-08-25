@@ -5,7 +5,8 @@ import * as Modules from "modules";
 
 const RoutesArray = [
 	{ path: "*", element: <Navigate to="/" replace /> },
-	{ path: "/", element: <Modules.Landing /> },
+	{ path: "/", element: <Modules.Deploy /> },
+	{ path: "/access", element: <Modules.Landing /> },
 
 	{ path: "/create/mnemonic", element: <Modules.CreateMnemonic/> },
 	{ path: "/create/keystore", element: <Modules.CreateKeystore/> },
@@ -15,11 +16,9 @@ const RoutesArray = [
 	{ path: "/access/private-key", element: <Modules.AccessPrivateKey/> },
 	{ path: "/access/local", element: <Modules.AccessLocal/> },
 
-	{ path: "/wallet", element: <Modules.Dashboard/> },
-	{ path: "/wallet/dash", element: <Modules.Dashboard/> },
-	{ path: "/wallet/transfer", element: <Modules.Transfer/> },
-	{ path: "/wallet/editor", element: <Modules.Deploy/> },
-	{ path: "/wallet/settings", element: <Modules.Settings/> },
+	{ path: "/balance", element: <Modules.Dashboard/> },
+	{ path: "/transfer", element: <Modules.Transfer/> },
+	{ path: "/settings", element: <Modules.Settings/> },
 ];
 
 export function Routes() {

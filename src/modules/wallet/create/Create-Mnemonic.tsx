@@ -45,7 +45,7 @@ export function CreateMnemonic() {
 
     const user = g.create_user("My Wallet", "", account_data);
     g.set_active_user(user);
-    navigate("/wallet/dash");
+    navigate("/balance");
   }
 
   function copy() {

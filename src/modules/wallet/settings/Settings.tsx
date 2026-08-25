@@ -11,7 +11,7 @@ export function Settings() {
   const [is_local, set_is_local] = useState(!!u.g.user?.password);
 
   let navigate = u.useNavigateIf(!u.g.user, "/access");
-  u.useNavigateIf(u.wallet_is_metamask(u.g.user), "/wallet/dash", navigate);
+  u.useNavigateIf(u.wallet_is_metamask(u.g.user), "/balance", navigate);
 
   let user = u.g.user as u.UserWallet;
 

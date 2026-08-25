@@ -4,6 +4,7 @@ import * as Components from 'components';
 import { useLayout } from 'Context';
 import { icon } from 'assets';
 import * as u from 'utils';
+import { BRAND } from "../../config/branding";
 
 export function Landing() {
     let navigate = useNavigate();
@@ -37,7 +38,7 @@ export function Landing() {
         let user = u.g.create_user_metamask(wallet);
         u.g.set_active_user(user);
         set_waiting(false);
-        navigate("/wallet/dash");
+        navigate("/balance");
     }
 
     useEffect(() => { detect_eth(); }, []);
@@ -89,7 +90,7 @@ export function Landing() {
 
     return (
         <Components.Strip bg="" className="sm:mt-16 max-w-fit">
-            <h2 className="text-center mb-8">Access or create your Gorki wallet</h2>
+            <h2 className="text-center mb-8">Access or create your {BRAND.name}</h2>
 
             <div className="flex flex-row flex-wrap gap-8 justify-center items-center">
                 { card_local }

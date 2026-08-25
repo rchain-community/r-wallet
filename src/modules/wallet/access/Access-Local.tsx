@@ -36,7 +36,7 @@ export function AccessLocal() {
         }
 
         g.set_active_user(user);
-        navigate("/wallet/dash");
+        navigate("/balance");
     }
 
     function handle_key(ev: KeyboardEvent) {
