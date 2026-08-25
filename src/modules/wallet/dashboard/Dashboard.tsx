@@ -127,9 +127,9 @@ export function Dashboard() {
         </h2>
 
         <div className="credit-card">
-            <div className="flex justify-between">
-                <img className="h-[3vw] sm:h-3" src={import.meta.env.BASE_URL+"lettering-white.svg"} />
-                <img className="h-[6vw] sm:h-8" src={import.meta.env.BASE_URL+"logo-white.svg"} />
+            <div className="flex justify-between items-center">
+                <span className="text-base font-semibold">{BRAND.name}</span>
+                <span className="text-base">{BRAND.ticker}</span>
             </div>
 
             <div className="chip">

@@ -65,8 +65,8 @@ export function Navigation() {
   return (
     <div className="flex flex-col gap-2 relative">
       {theme_switcher}
-      <Link className="flex justify-center gap-4 mx-auto p-8" to="/">
-          <img className="h-12" src={import.meta.env.BASE_URL+"logo.svg"} alt={BRAND.name} />
+      <Link className="flex justify-center mx-auto p-8 text-3xl font-bold tracking-wider" to="/">
+          {BRAND.name}
       </Link>
       <WalletLinks />
     </div>
