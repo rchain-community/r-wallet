@@ -2,8 +2,8 @@
 // Includes the `shardId` fix: field 11 must be written into the serialized
 // DeployData or the node rejects the deploy with "Deploy signature is invalid.".
 
-import { ec } from "elliptic";
-import { blake2bHex } from "blakejs";
+import elliptic from "elliptic";
+import blake from "blakejs";
 import jspb from "google-protobuf";
 import type { DeployData, DeployRequest } from "./types";
 
@@ -31,11 +31,11 @@ export function deployDataProtobufSerialize(deployData: DeployData): Uint8Array 
 }
 
 export function signDeploy(deployData: DeployData, privateKey: string): DeployRequest {
-    const secp256k1 = new ec("secp256k1");
+    const secp256k1 = new elliptic.ec("secp256k1");
     const key = secp256k1.keyFromPrivate(privateKey.replace(/^0x/, ""));
 
     const deployer = Uint8Array.from(key.getPublic("array"));
-    const hashed = blake2bHex(deployDataProtobufSerialize(deployData), undefined, 32);
+    const hashed = blake.blake2bHex(deployDataProtobufSerialize(deployData), undefined, 32);
     const sig = Uint8Array.from(key.sign(hashed, { canonical: true }).toDER());
 
     return {

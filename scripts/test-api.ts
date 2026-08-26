@@ -1,0 +1,132 @@
+// Integration test: exercises the real `src/api` modules against a running
+// devnet. Run with: npm run test:api  (requires the devnet on localhost:40403/40405).
+
+import {
+    getStatus,
+    exploreDeploy,
+    deploy,
+    deployStatus,
+    propose,
+    dataAtName,
+    getBlock,
+} from "../src/api/client";
+import { signDeploy } from "../src/api/sign";
+import { rhoExprToJson } from "../src/api/rho-json";
+import { faucet } from "../src/api/faucet";
+import * as bc from "../src/utils/blockchain";
+import * as rho from "../src/utils/rho";
+import type { DeployData } from "../src/api/types";
+
+const HTTP = "http://localhost:40403";
+const ADMIN = "http://localhost:40405";
+const DEPLOYER_PRIV = "a68a6e6cca30f81bd24a719f3145d20e8424bd7b396309b0708a16c7d8000b76";
+
+let failures = 0;
+function check(cond: boolean, label: string) {
+    if (cond) console.log(`  PASS  ${label}`);
+    else {
+        console.error(`  FAIL  ${label}`);
+        failures++;
+    }
+}
+
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+async function main() {
+    // 1. status
+    const status = await getStatus(HTTP);
+    check(typeof status.shardId === "string", `status.shardId = "${status.shardId}"`);
+    check(typeof status.minPhloPrice === "number", `status.minPhloPrice = ${status.minPhloPrice}`);
+    check(typeof status.latestBlockNumber === "number", `status.latestBlockNumber = ${status.latestBlockNumber}`);
+
+    // 2. explore-deploy: simple term + rhoExprToJson
+    const simple = await exploreDeploy(HTTP, "new return in { return!(42) }");
+    check(Array.isArray(simple.expr) && simple.expr.length === 1, "explore-deploy returns one expr");
+    check("ExprInt" in simple.expr[0] && simple.expr[0].ExprInt === 42, "expr[0] is {ExprInt:42}");
+    check(rhoExprToJson(simple.expr[0]) === 42, "rhoExprToJson(ExprInt) === 42");
+    check(!!simple.block?.blockHash, "explore-deploy returns block.blockHash");
+
+    // 3. explore-deploy via the real check_balance rholang
+    const deployer = await bc.get_account_from_private_key(DEPLOYER_PRIV);
+    check(!!deployer, "derive deployer address from private key");
+    const bal = await exploreDeploy(HTTP, rho.fn_check_balance(deployer!.revAddr));
+    check(
+        !!bal.expr[0] && "ExprInt" in bal.expr[0] && bal.expr[0].ExprInt >= 0,
+        `check_balance returns ExprInt (${bal.expr[0] && "ExprInt" in bal.expr[0] ? bal.expr[0].ExprInt : "?"})`
+    );
+
+    // 4. deploy (sign a term that writes to the deployId channel)
+    const term = "new deployId(`rho:rchain:deployId`) in { deployId!(42) }";
+    const deployData: DeployData = {
+        term,
+        timestamp: Date.now(),
+        phloPrice: Math.max(1, status.minPhloPrice),
+        phloLimit: 500000,
+        validAfterBlockNumber: status.latestBlockNumber,
+        shardId: "root",
+    };
+    const signed = signDeploy(deployData, DEPLOYER_PRIV);
+    const deployId = await deploy(HTTP, signed);
+    check(/^[0-9a-f]+$/.test(deployId), `deploy returns hex deployId (${deployId.slice(0, 16)}...)`);
+
+    // 5. deploy-status -> poll to terminal state
+    let processed = false;
+    for (let i = 0; i < 20 && !processed; i++) {
+        const st = await deployStatus(HTTP, deployId);
+        if ("ProcessedWithSuccess" in st) {
+            check(Array.isArray(st.ProcessedWithSuccess.deployResult), "deployStatus -> ProcessedWithSuccess");
+            processed = true;
+        } else if ("ProcessedWithError" in st) {
+            check(false, `deployStatus -> ProcessedWithError: ${st.ProcessedWithError.deployError}`);
+            processed = true;
+        } else {
+            await sleep(3000);
+        }
+    }
+    check(processed, "deployStatus reached a terminal state");
+
+    // 6. data-at-name
+    const dan = await dataAtName(HTTP, { UnforgDeploy: deployId }, 1);
+    check(Array.isArray(dan.exprs), "data-at-name returns exprs array");
+    check(typeof dan.length === "number", "data-at-name returns length");
+
+    // 7. getBlock (use the block hash returned by explore-deploy)
+    const block = await getBlock(HTTP, simple.block.blockHash);
+    check(!!block.blockInfo, "getBlock returns blockInfo");
+    check(Array.isArray(block.deploys), "getBlock returns deploys array");
+
+    // 8. propose (admin)
+    try {
+        const proposed = await propose(ADMIN);
+        check(typeof proposed === "string" && proposed.length > 0, `propose returns string (${proposed.slice(0, 48)}...)`);
+    } catch (e) {
+        check(false, `propose failed: ${(e as Error).message.slice(0, 140)}`);
+    }
+
+    // 9. faucet end-to-end
+    const target = await bc.create_account();
+    check(!!target, "faucet: create target account");
+    let funded: { deployId: string } | null = null;
+    try {
+        funded = await Promise.race([
+            faucet(HTTP, target!.revAddr, { privateKey: DEPLOYER_PRIV, amount: 1000 }),
+            new Promise<never>((_, rej) => setTimeout(() => rej(new Error("faucet timed out (node not producing blocks)")), 45000)),
+        ]);
+    } catch (e) {
+        check(false, `faucet: ${(e as Error).message}`);
+    }
+    if (funded) {
+        check(/^[0-9a-f]+$/.test(funded.deployId), `faucet returns deployId (${funded.deployId.slice(0, 16)}...)`);
+        const targetBal = await exploreDeploy(HTTP, rho.fn_check_balance(target!.revAddr));
+        const fundedAmt = targetBal.expr[0] && "ExprInt" in targetBal.expr[0] ? targetBal.expr[0].ExprInt : 0;
+        check(fundedAmt > 0, `faucet funded target (balance=${fundedAmt})`);
+    }
+
+    console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
+    process.exit(failures === 0 ? 0 : 1);
+}
+
+main().catch(e => {
+    console.error("FATAL:", e);
+    process.exit(1);
+});

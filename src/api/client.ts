@@ -1,4 +1,6 @@
-// Typed functions for the RNode (Rust) HTTP API.
+// Typed functions for the RNode (Rust) HTTP API — deployer-only subset.
+// One function per endpoint, all following the same convention:
+//   httpFetch(METHOD, path, body?) -> ensureOk(res) -> return the typed DTO.
 
 import { httpFetch } from "./http";
 import type {
@@ -7,8 +9,8 @@ import type {
     DataAtNameResponse,
     DeployExecStatus,
     DeployRequest,
-    LightBlockInfo,
     RhoDataResponse,
+    RhoUnforg,
 } from "./types";
 
 const api = (base: string, path: string) => `${base.replace(/\/$/, "")}/api/${path}`;
@@ -32,13 +34,6 @@ export async function exploreDeploy(url: string, term: string): Promise<RhoDataR
     return res.json as RhoDataResponse;
 }
 
-export async function dataAtName(url: string, deployId: string, depth = 1): Promise<DataAtNameResponse> {
-    const body = JSON.stringify({ name: { UnforgDeploy: deployId }, depth });
-    const res = await httpFetch("POST", api(url, "data-at-name"), body);
-    ensureOk(res);
-    return res.json as DataAtNameResponse;
-}
-
 export async function deploy(url: string, signed: DeployRequest): Promise<string> {
     const res = await httpFetch("POST", api(url, "deploy"), JSON.stringify(signed));
     ensureOk(res);
@@ -55,26 +50,22 @@ export async function deployStatus(url: string, deployId: string): Promise<Deplo
     return res.json as DeployExecStatus;
 }
 
-export async function findDeploy(url: string, deployId: string): Promise<LightBlockInfo> {
-    const res = await httpFetch("GET", api(url, `deploy/${deployId}`));
+export async function propose(adminUrl: string): Promise<string> {
+    // No body — the admin propose handler takes no JSON payload.
+    const res = await httpFetch("POST", `${adminUrl.replace(/\/$/, "")}/api/propose`);
     ensureOk(res);
-    return res.json as LightBlockInfo;
+    return typeof res.json === "string" ? res.json : res.text;
+}
+
+export async function dataAtName(url: string, name: RhoUnforg, depth = 1): Promise<DataAtNameResponse> {
+    const body = JSON.stringify({ name, depth });
+    const res = await httpFetch("POST", api(url, "data-at-name"), body);
+    ensureOk(res);
+    return res.json as DataAtNameResponse;
 }
 
 export async function getBlock(url: string, hash: string): Promise<BlockInfo> {
     const res = await httpFetch("GET", api(url, `block/${hash}`));
     ensureOk(res);
     return res.json as BlockInfo;
-}
-
-export async function getBlocks(url: string, depth = 1): Promise<LightBlockInfo[]> {
-    const res = await httpFetch("GET", api(url, `blocks/${depth}`));
-    ensureOk(res);
-    return res.json as LightBlockInfo[];
-}
-
-export async function propose(adminUrl: string): Promise<string> {
-    const res = await httpFetch("POST", `${adminUrl.replace(/\/$/, "")}/api/propose`, "{}");
-    ensureOk(res);
-    return typeof res.json === "string" ? res.json : res.text;
 }

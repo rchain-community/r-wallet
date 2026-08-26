@@ -45,7 +45,8 @@
   "scripts": {
     "start": "vite",
     "build": "tsc && vite build",
-    "serve": "vite preview"
+    "serve": "vite preview",
+    "test:api": "tsx scripts/test-api.ts"
   },
   "browserslist": {
     "production": [
@@ -58,5 +59,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "tsx": "^4.23.12"
   }
 }

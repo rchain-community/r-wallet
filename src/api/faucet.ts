@@ -5,6 +5,7 @@ import * as bc from "../utils/blockchain";
 import * as rho from "../utils/rho";
 import { deploy, deployStatus, getStatus } from "./client";
 import { signDeploy } from "./sign";
+import type { FaucetResult } from "./types";
 import type { FaucetConfig } from "../utils/networks";
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
@@ -13,7 +14,7 @@ export async function faucet(
     url: string,
     toRevAddr: string,
     config: FaucetConfig
-): Promise<{ deployId: string }> {
+): Promise<FaucetResult> {
     const deployer = await bc.get_account_from_private_key(config.privateKey);
     if (!deployer || !deployer.privKey) {
         throw new Error("Invalid faucet deployer private key.");

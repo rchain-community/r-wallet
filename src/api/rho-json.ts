@@ -2,9 +2,9 @@
 // replacing the vendored `rho-json.ts` (which expected the Scala `{Type:{data}}`
 // shape).
 
-import type { RhoExpr } from "./types";
+import type { RhoExpr, RhoJsonValue } from "./types";
 
-export function rhoExprToJson(expr: RhoExpr | null | undefined): any {
+export function rhoExprToJson(expr: RhoExpr | null | undefined): RhoJsonValue {
     if (expr == null) return null;
 
     if ("ExprInt" in expr) return expr.ExprInt;
@@ -27,7 +27,7 @@ export function rhoExprToJson(expr: RhoExpr | null | undefined): any {
     if ("ExprPar" in expr) return expr.ExprPar.map(rhoExprToJson);
 
     if ("ExprMap" in expr) {
-        const obj: Record<string, any> = {};
+        const obj: Record<string, RhoJsonValue> = {};
         for (const [k, v] of expr.ExprMap) obj[k] = rhoExprToJson(v);
         return obj;
     }

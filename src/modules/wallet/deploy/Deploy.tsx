@@ -206,7 +206,7 @@ export function Deploy() {
     }
 
     set_err(res?.error);
-    set_msg(res?.expr ? JSON.stringify(res?.expr.map(rhoExprToJson), null, 2) : res?.expr);
+    set_msg(res?.expr ? JSON.stringify(res?.expr.map(rhoExprToJson), null, 2) : null);
     set_op(u.OPERATION.INITIAL);
   }
 

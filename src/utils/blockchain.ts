@@ -10,12 +10,13 @@ const _HDKey = _ethereumjs_wallet.then(w => w.hdkey);
 const prefix = { coinId: "000000", version: "00" } as const;
 
 let _secp256k1: import("elliptic").ec | null = null;
-async function secp256k1() {
+async function secp256k1(): Promise<import("elliptic").ec> {
 	if (_secp256k1 == null) {
-		const ec = (await import("elliptic")).ec;
+		const mod = (await import("elliptic")) as any;
+		const ec = (mod.default ?? mod).ec;
 		_secp256k1 = new ec("secp256k1");
 	}
-	return _secp256k1;
+	return _secp256k1!;
 }
 
 type AsyncModule<PKG extends {}> = {
@@ -29,12 +30,13 @@ function module_proxy<K extends {}>(imported_package: Promise<K>): AsyncModule<K
 	return new Proxy(
 		{}, {
 			get(_, prop, __) {
-				let pkg: K|null = null;
+				let pkg: any = null;
 				return async function(...args: any) {
 					if (pkg == null) {
 						pkg = await imported_package;
 					}
-					const fn = pkg[prop as keyof K] as any;
+					const mod = (pkg.default ?? pkg) as any;
+					const fn = mod[prop as keyof K] as any;
 					return await fn(...args);
 				}
 			}

@@ -112,3 +112,20 @@ export interface RhoDataResponse {
     expr: RhoExpr[];
     block: LightBlockInfo;
 }
+
+// A JSON value produced by rhoExprToJson (recursive, no `any`).
+export type RhoJsonValue =
+    | string
+    | number
+    | boolean
+    | null
+    | RhoJsonValue[]
+    | { [key: string]: RhoJsonValue };
+
+// Domain results returned by the src/utils/rnode.ts seam (consumed by the UI).
+export type BalanceResult = { balance: number | null; error: string | null };
+export type DeployResult = { message: string | null; cost: number | null; error: string | null };
+export type TransferResult = { cost: number | null; error: string | null };
+export type ExploreResult = { expr: RhoExpr[] | null; error: string | null };
+export type ProposeResult = { expr: string | null; error: string | null };
+export type FaucetResult = { deployId: string };
