@@ -34,3 +34,9 @@ export function rhoExprToJson(expr: RhoExpr | null | undefined): RhoJsonValue {
 
     return expr;
 }
+
+// Pretty-print a converted result for the editor's response window
+// (2-space indent, always valid JSON).
+export function formatRhoJson(value: unknown): string {
+    return JSON.stringify(value, null, 2) ?? "null";
+}

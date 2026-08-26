@@ -46,7 +46,8 @@
     "start": "vite",
     "build": "tsc && vite build",
     "serve": "vite preview",
-    "test:api": "tsx scripts/test-api.ts"
+    "test:api": "tsx scripts/test-api.ts",
+    "test:rho-json": "tsx scripts/test-rho-json.ts"
   },
   "browserslist": {
     "production": [

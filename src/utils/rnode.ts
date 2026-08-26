@@ -13,7 +13,7 @@ import {
     propose as apiPropose,
 } from '../api/client';
 import { signDeploy } from '../api/sign';
-import { rhoExprToJson } from '../api/rho-json';
+import { rhoExprToJson, formatRhoJson } from '../api/rho-json';
 import type {
     BalanceResult,
     DeployRequest,
@@ -196,7 +196,7 @@ export async function deploy(
     }
 
     return {
-        message: Array.isArray(args) ? args.join(", ") : String(args),
+        message: formatRhoJson(args),
         cost: cost ?? null,
         error: null
     };
