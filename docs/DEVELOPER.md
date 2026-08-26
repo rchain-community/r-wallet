@@ -172,3 +172,7 @@ compatible (see the interop note below).
   `src/api/types.ts` (wire types) and reuse the `*Result` domain types.
 - No `any` in the API-touching path.
 - Branding strings come from `src/config/branding.ts` (`BRAND.name` / `BRAND.ticker`).
+- Contract-template help lives in `snippet_meta` (in
+  `src/modules/wallet/deploy/snippets.ts`): a `description` per snippet, plus
+  optional `fieldHelp`/`defaults`. The editor's EXPLAIN toggle renders these;
+  don't hardcode help strings in `Deploy.tsx`.

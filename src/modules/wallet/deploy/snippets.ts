@@ -401,7 +401,7 @@ export const snippets = {
             "    }\n" +
             "  }\n" +
             "}",
-        fields: [str_field("lockerTag"), str_field("name"), num_field("ballot")]
+        fields: [str_field("lockerTag"), str_field("ballot"), num_field("choices")]
     },
     newIssue: {
         code:
@@ -974,7 +974,7 @@ export const snippets = {
             str_field("subtype"),
             str_field("capability"),
             str_field("method"),
-            str_field("set")
+            set_field("arg")
         ]
     },
     towers: {
@@ -1026,3 +1026,78 @@ export const snippets = {
         fields: [num_field("height")]
     },
 } satisfies Record<string, Snippet>;
+
+// Editor help metadata for each snippet: a short description, optional
+// per-field help text, and optional default field values (ported from rgov).
+export type SnippetMeta = {
+    description: string;
+    fieldHelp?: Record<string, string>;
+    defaults?: Record<string, string>;
+};
+
+// Hints shared across many templates (used by the explainer UI).
+export const common_field_help: Record<string, string> = {
+    lockerTag: "Which inbox \"locker\" to use (defaults to \"inbox\").",
+    ReadcapURI: "Master read-capability URI.",
+    toInboxURI: "Recipient's inbox URI.",
+    delegateURI: "URI to delegate your vote to.",
+    amount: "Amount in drops (1 REV = 100,000,000 drops).",
+};
+
+// Defaults shared across many templates.
+export const common_field_defaults: Record<string, string> = {
+    lockerTag: "inbox",
+};
+
+export const snippet_meta: Record<keyof typeof snippets, SnippetMeta> = {
+    blank: { description: "Empty starting point — write rholang from scratch." },
+    checkBalance: { description: "Read the REV balance of a wallet address." },
+    transfer: {
+        description: "Transfer REV from your wallet to another address.",
+        defaults: { amount: "100000000" },
+    },
+    sequencialLooping: { description: "Demo of sequential looping and recursion in rholang." },
+    newInbox: { description: "Claim your dictionary and inbox from the master contract." },
+    peekInbox: { description: "Peek at inbox messages (optionally filtered by type/subtype)." },
+    receiveFromInbox: { description: "Consume (receive) a message from your inbox." },
+    createInboxandCastVote: { description: "Create an inbox and cast a vote (placeholder)." },
+    newChat: { description: "Create a chat channel with pub/sub capabilities." },
+    sendChat: { description: "Send a message to a chat channel." },
+    readChat: { description: "Read the next message from a chat channel." },
+    newBallot: { description: "Create a ballot and grant voting rights." },
+    castBallot: { description: "Cast a vote on a ballot." },
+    newIssue: { description: "Create an issue with a set of proposals." },
+    addVoterToIssue: { description: "Grant a voter the right to vote on an issue." },
+    addGroupToIssue: { description: "Grant every member of a group the right to vote on an issue." },
+    castVote: { description: "Cast a vote on an issue." },
+    displayVote: { description: "Show the current vote choices on an issue." },
+    delegateVote: { description: "Delegate your vote on an issue to another inbox." },
+    tallyVotes: { description: "Tally the votes on an issue." },
+    share: { description: "Share an object from your inbox to another inbox." },
+    sendMail: { description: "Send an email-style message to another inbox." },
+    newGroup: { description: "Create a new group/community." },
+    joinGroup: { description: "Request to join a group." },
+    addMember: { description: "Add a member to a group." },
+    newMemberDirectory: { description: "Create a new member directory." },
+    makeMint: {
+        description: "Create a new token mint.",
+        defaults: { name: "myTokenMint" },
+    },
+    helloWorld: { description: "Minimal hello-world — write to stdout." },
+    getRoll: { description: "Read the membership roll (registered voters)." },
+    peekKudos: { description: "Peek at the current kudos value." },
+    awardKudos: { description: "Award kudos to someone." },
+    claimWithInbox: { description: "Set up your inbox via the member directory." },
+    checkRegistration: { description: "Check whether an address is registered on the roll." },
+    lookupURI: { description: "Look up the object registered at a URI." },
+    createURI: { description: "Insert an arbitrary value into the registry and get its URI." },
+    doit: {
+        description: "Generic capability call — invoke a method on a capability.",
+        defaults: { type: "Group", capability: "admin", method: "register" },
+    },
+    towers: {
+        description: "Towers of Hanoi recursion demo.",
+        defaults: { height: "3" },
+    },
+};
+

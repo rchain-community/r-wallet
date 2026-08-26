@@ -87,6 +87,10 @@ Wire facts: serde enums are **externally tagged** (`{"ExprInt":42}`,
    don't hardcode "R Wallet"/"REV"/"GOR".
 7. **`vendored/`** is the legacy Scala client — only MetaMask eth-detection still
    touches it. Don't add new imports from it.
+8. **Snippet metadata** — template help text lives in `snippet_meta` (in
+   `src/modules/wallet/deploy/snippets.ts`): a `description` per snippet plus
+   optional `fieldHelp`/`defaults`. The editor's EXPLAIN toggle renders them. Add
+   a `description` for any new snippet; don't hardcode help strings in `Deploy.tsx`.
 
 ## Known node-side issues (out of scope here, in `~/RNodeRust`)
 
