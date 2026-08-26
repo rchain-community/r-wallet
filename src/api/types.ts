@@ -130,8 +130,8 @@ export type RhoJsonValue =
 
 // Domain results returned by the src/utils/rnode.ts seam (consumed by the UI).
 export type BalanceResult = { balance: number | null; error: string | null };
-export type DeployResult = { message: string | null; cost: number | null; error: string | null };
-export type TransferResult = { cost: number | null; error: string | null };
+export type DeployResult = { deployId: string | null; error: string | null };
+export type TransferResult = { deployId: string | null; error: string | null };
 export type ExploreResult = { expr: RhoExpr[] | null; error: string | null };
 export type ProposeResult = { expr: string | null; error: string | null };
 export type FaucetResult = { deployId: string };

@@ -73,72 +73,22 @@ export const snippets = {
     checkBalance: {
         code:
             "[myGovRevAddr] => {\n" +
-            "  new    // use Explore to see result at return\n" +
-            "  return,\n" +
-            "  lookup(`rho:registry:lookup`),\n" +
-            "  RevVaultCh,\n" +
-            "  vaultCh,\n" +
-            "  balanceCh\n" +
-            "  in {\n" +
-            "    lookup!(`rho:rchain:revVault`, *RevVaultCh) |\n" +
-            "    for (@(_, RevVault) <- RevVaultCh) {\n" +
-            '      @RevVault!("findOrCreate", myGovRevAddr, *vaultCh) |\n' +
-            "      for (@(true, vault) <- vaultCh) {\n" +
-            '        @vault!("balance", *balanceCh) |\n' +
-            "        for (@balance <- balanceCh) {\n" +
-            '          return!(["#define", "$myBalance", balance])|\n' +
-            '          return!("${rev}.${fraction}" %% {\n' +
-            '            "rev": balance/100000000,\n' +
-            '            "fraction": ("${num}"%%{\n' +
-            '              "num": balance%100000000+100000000}).slice(1,9)\n' +
-            "            }\n" +
-            "            )\n" +
-            "          }\n" +
-            "        }\n" +
-            "      }\n" +
-            "    }\n" +
+            "  new return, revVault(`rho:rchain:revVault`), balanceCh in {\n" +
+            '    revVault!("getBalance", myGovRevAddr, *balanceCh) |\n' +
+            "    for (@balance <- balanceCh) { return!(balance) }\n" +
             "  }\n" +
-            "",
+            "}",
         fields: [rev_field("myGovRevAddr")]
     },
     transfer: {
         code:
-            "[revAddrFrom, revAddrTo, amount] => {\n" +
-            "  new rl(`rho:registry:lookup`), RevVaultCh in {\n" +
-            "    rl!(`rho:rchain:revVault`, *RevVaultCh) |\n" +
-            "    for (@(_, RevVault) <- RevVaultCh) {\n" +
-            "      new vaultCh, vaultTo, revVaultkeyCh,\n" +
-            "      deployerId(`\n" +
-            "      rho:rchain:deployerId`),\n" +
-            "      deployId(`\n" +
-            "      rho:rchain:deployId`)\n" +
-            "      in {\n" +
-            '        @RevVault!("findOrCreate", revAddrFrom, *vaultCh) |\n' +
-            '        @RevVault!("findOrCreate", revAddrTo, *vaultTo) |\n' +
-            '        @RevVault!("deployerAuthKey", *deployerId, *revVaultkeyCh) |\n' +
-            "        for (@vault <- vaultCh; key <- revVaultkeyCh; _ <- vaultTo) {\n" +
-            "          match vault {\n" +
-            "            (true, vault) => {\n" +
-            "              new resultCh in {\n" +
-            '                @vault!("transfer", revAddrTo, amount, *key, *resultCh) |\n' +
-            "                for (@result <- resultCh) {\n" +
-            "                  match result {\n" +
-            '                    (true , _ ) => deployId!((true, "Transfer successful (not yet finalized)."))\n' +
-            "                    (false, err) => deployId!((false, err))\n" +
-            "                  }\n" +
-            "                }\n" +
-            "              }\n" +
-            "            }\n" +
-            "            err => {\n" +
-            '              deployId!((false, "REV vault cannot be found or created."))\n' +
-            "            }\n" +
-            "          }\n" +
-            "        }\n" +
-            "      }\n" +
-            "    }\n" +
+            "[revAddrTo, amount] => {\n" +
+            "  new revVault(`rho:rchain:revVault`), deployerId(`rho:rchain:deployerId`), deployId(`rho:rchain:deployId`), resultCh in {\n" +
+            '    revVault!("transfer", *deployerId, revAddrTo, amount, *resultCh) |\n' +
+            '    for (_ <- resultCh) { deployId!((true, "Transfer successful (not yet finalized).")) }\n' +
             "  }\n" +
             "}",
-        fields: [rev_field("revAddrFrom"), str_field("revAddrTo"), num_field("amount")]
+        fields: [str_field("revAddrTo"), num_field("amount")]
     },
     sequencialLooping: {
         code:

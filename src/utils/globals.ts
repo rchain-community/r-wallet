@@ -20,24 +20,22 @@ export async function transfer(
 	ctx: NodeContext,
 	amount: number,
 	from_account: u.NamedWallet,
-	target_account: u.NamedWallet,
-	cancel?: ()=>boolean
+	target_account: u.NamedWallet
 ) {
 	if (!from_account) { return null; }
 	if (!target_account) { return null; }
 	let url = ctx.get_validator_url();
-	return await (await rnode).transfer(url, from_account, target_account, amount, cancel);
+	return await (await rnode).transfer(url, from_account, target_account, amount);
 }
 
 export async function deploy_code(
 	ctx: NodeContext,
 	code: string,
-	phlo_limit: number,
-	cancel?: ()=>boolean
+	phlo_limit: number
 ) {
 	if (!user) { return null; }
 	let url = ctx.get_validator_url();
-	return await (await rnode).deploy(url, user, code, phlo_limit, cancel);
+	return await (await rnode).deploy(url, user, code, phlo_limit);
 }
 
 export async function propose(

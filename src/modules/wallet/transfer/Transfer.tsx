@@ -72,7 +72,7 @@ export function Transfer() {
       } else {
         layout.push_notif({
           group_id: "transfer-success",
-          content: u.notif.info("Success!", "Your transfer is successful, but not finalized yet. Check your balance again in a few minutes.")
+          content: u.notif.info("Submitted!", "Transfer submitted. Track its status in the Transactions list.")
         });
       }
 

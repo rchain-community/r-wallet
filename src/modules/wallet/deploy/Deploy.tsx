@@ -99,7 +99,7 @@ export function Deploy() {
   const [args, set_args] = useState<Array<string|null>>([]);
   const [err,  set_err] = useState<string|null>();
   const [msg,  set_msg] = useState<string|null>();
-  const [cost, set_cost] = useState<number|null>(1);
+  const [cost, set_cost] = useState<number|null>(null);
   const [op, set_op] = useState(u.OPERATION.INITIAL);
   const theme = u.useTheme();
 
@@ -133,8 +133,8 @@ export function Deploy() {
     }
 
     set_err(res?.error);
-    set_msg(res?.message);
-    set_cost(res?.cost);
+    set_msg(res?.deployId ? `Deploy submitted: ${res.deployId}` : null);
+    set_cost(null);
     set_op(u.OPERATION.INITIAL);
   }
 
@@ -320,15 +320,17 @@ export function Deploy() {
                   disabled={!code.value || phlo_limit.value <= 0}
                   onClick={deploy}
                   >
-                  ADMIN DEPLOY
+                  DEPLOY
                 </Components.Button>
-                  
-                <Components.Button
-                  disabled={!code.value || phlo_limit.value <= 0}
-                  onClick={propose}
-                >
-                  PROPOSE
-                </Components.Button>
+
+                {node_context.node.devnet && (
+                  <Components.Button
+                    disabled={!code.value || phlo_limit.value <= 0}
+                    onClick={propose}
+                  >
+                    PROPOSE
+                  </Components.Button>
+                )}
                 
               </>}
             />

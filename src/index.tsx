@@ -2,7 +2,7 @@ import './styles/index.scss';
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
-import { g, nw, useLocalStorage } from 'utils';
+import { g, nw, tx, useLocalStorage } from 'utils';
 import * as Components from 'components';
 import { LayoutContext, NodeContext, Notif } from "./Context";
 import type { Modal } from "components";
@@ -18,6 +18,7 @@ declare global {
 };
 
 g.restore_user_list();
+tx.restore_tx_list();
 
 let notif_id = 0;
 

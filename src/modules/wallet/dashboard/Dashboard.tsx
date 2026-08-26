@@ -175,6 +175,7 @@ export function Dashboard() {
         <h3 className="mt-4">Network</h3>
         <Components.NodePicker />
 
-        {/*<TransactionList />*/}
+        <h3 className="mt-4">Transactions</h3>
+        <Components.TransactionList />
     </Components.Strip>;
 }

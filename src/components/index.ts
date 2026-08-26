@@ -12,4 +12,5 @@ export * from './routes/Routes';
 export * from './spinner/Spinner';
 export * from './tabs/Tabs';
 export * from './toggle-button/ToggleButton';
+export * from './transaction-list/TransactionList';
 

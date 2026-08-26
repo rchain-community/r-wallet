@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, JSXElementConstructor, JSX, Dispatch, SetStateAction } from 'react';
 import { useNavigate } from "react-router-dom";
 import type { nw } from "utils";
+import type { TransactionRecord } from "./transactions";
 
 export type Unbox<T> = T extends PromiseLike<infer U> ? Unbox<U> : T;
 
@@ -72,7 +73,8 @@ export type UserMetaMaskWallet = NamedWallet & MetaMaskWallet;
 interface LocallyStored {
 	"user-list": UserWallet[],
 	"wallet-list": NamedWallet[],
-	"custom-nodes": nw.Named_Node[]
+	"custom-nodes": nw.Named_Node[],
+	"tx-list": TransactionRecord[]
 };
 
 type LS_Callbacks = {
@@ -85,6 +87,8 @@ export function set_local<K extends keyof LocallyStored>(
 	key: K,
 	val: LocallyStored[K]|null|undefined
 ) {
+	if (typeof localStorage === "undefined") { return; }
+
 	if (val === null || val === undefined) {
 		localStorage.removeItem(key);
 	} else {
@@ -107,6 +111,10 @@ export function get_local<K extends keyof LocallyStored>(
 	key: K,
 	default_value?: LocallyStored[K]
 ): LocallyStored[K] | null | undefined {
+	if (typeof localStorage === "undefined") {
+		return default_value ?? null;
+	}
+
 	if (!(key in localStorage) && default_value !== undefined) {
 		set_local(key, default_value);
 	}

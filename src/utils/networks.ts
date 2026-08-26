@@ -15,6 +15,8 @@ export interface Named_Node extends Node {
 	editable?: boolean;
 	// The node exposes the devnet `POST /api/faucet` endpoint.
 	faucet?: boolean;
+	// Devnet / single-node testnet: admin `propose` (force a block) is available.
+	devnet?: boolean;
 };
 
 function local_node(n: number): Named_Node {
@@ -24,6 +26,7 @@ function local_node(n: number): Named_Node {
 		url: "http://localhost",
 		port: 40403 + n*10,
 		faucet: true,
+		devnet: true,
 	};
 }
 

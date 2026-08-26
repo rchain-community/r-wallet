@@ -129,6 +129,22 @@ The wallet's templates in `src/utils/rho.ts` use these:
 
 ---
 
+## Deploy & transactions
+
+The three operations an app performs against a node (per
+[`rchain-rust` `docs/src/developer/building-apps.md`](https://github.com/rchain-community/rchain-rust/blob/main/docs/src/developer/building-apps.md)):
+
+1. **Explore** — `POST /api/explore-deploy` (read-only eval); the result goes to the editor's response window.
+2. **Deploy** — sign `DeployData` and `POST /api/deploy`; the deploy lands in the pool and is included when the node proposes. Always available.
+3. **Propose** — `POST /api/propose` (admin `40405`) forces a block. **Gated to `devnet` nodes** (`networks.ts` `devnet: true`); hidden elsewhere.
+
+Deploys/transfers/faucets are **submit-and-track**: `src/utils/transactions.ts` records each
+submission (`pending`), and the Transactions list on the Dashboard polls `deploy-status` to move it
+to `finalized`/`failed`. The node has no endpoint to list pooled deploys, so the wallet tracks its own
+submissions in localStorage.
+
+---
+
 ## Testing
 
 ```bash
@@ -174,5 +190,5 @@ compatible (see the interop note below).
 - Branding strings come from `src/config/branding.ts` (`BRAND.name` / `BRAND.ticker`).
 - Contract-template help lives in `snippet_meta` (in
   `src/modules/wallet/deploy/snippets.ts`): a `description` per snippet, plus
-  optional `fieldHelp`/`defaults`. The editor's EXPLAIN toggle renders these;
+  optional `fieldHelp`/`defaults`. The editor's EXPLAIN modal renders these;
   don't hardcode help strings in `Deploy.tsx`.

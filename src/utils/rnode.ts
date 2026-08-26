@@ -1,30 +1,27 @@
 // noindex
 // Integration seam: exposes `check_balance`, `transfer`, `deploy`, `explore`,
 // `propose` for `globals.ts` and the UI, backed by the typed client in `src/api`.
+// Deploy/transfer submit-and-track (non-blocking): they return the deploy id and
+// record a pending transaction; the transaction view polls `deploy-status`.
 
 import * as u from './utils';
 import * as rho from './rho';
+import { add_tx } from './transactions';
 import {
     deploy as apiDeploy,
-    deployStatus,
     exploreDeploy,
-    getBlock,
     getStatus,
     propose as apiPropose,
 } from '../api/client';
 import { signDeploy } from '../api/sign';
-import { rhoExprToJson, formatRhoJson } from '../api/rho-json';
 import type {
     BalanceResult,
     DeployRequest,
     DeployResult,
     ExploreResult,
     ProposeResult,
-    RhoExpr,
     TransferResult,
 } from '../api/types';
-
-const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 interface SignedDeploy {
     deployId: string;
@@ -57,39 +54,6 @@ async function sendDeploy(
     return { deployId, signed };
 }
 
-async function getDataForDeploy(
-    url: string,
-    deployId: string,
-    cancel: () => boolean = () => false
-): Promise<{ data: { expr: RhoExpr } | null; cost: number | null }> {
-    for (;;) {
-        const st = await deployStatus(url, deployId);
-
-        if ("ProcessedWithSuccess" in st) {
-            const { deployResult, block } = st.ProcessedWithSuccess;
-            let cost: number | null = null;
-            try {
-                const blockInfo = await getBlock(url, block.blockHash);
-                const deployInfo = blockInfo.deploys.find(d => d.sig === deployId);
-                if (deployInfo) cost = deployInfo.cost;
-            } catch {
-                // cost is best-effort; the result expression is what matters
-            }
-            const expr = deployResult.length > 0 ? deployResult[0] : null;
-            return { data: expr == null ? null : { expr }, cost };
-        }
-
-        if ("ProcessedWithError" in st) {
-            throw new Error(st.ProcessedWithError.deployError);
-        }
-
-        if (cancel()) {
-            throw new Error("Deploy polling cancelled.");
-        }
-        await sleep(3000);
-    }
-}
-
 export async function check_balance(
     readonly_url: string,
     rev_addr: string
@@ -116,8 +80,7 @@ export async function transfer(
     node_url: string,
     from_wallet: u.NamedWallet,
     to_wallet: u.NamedWallet,
-    amount: number,
-    cancel: ()=>boolean = ()=>false
+    amount: number
 ): Promise<TransferResult> {
     u.wallet_normalize(from_wallet);
     u.wallet_normalize(to_wallet);
@@ -127,42 +90,25 @@ export async function transfer(
     try {
         ({ deployId } = await sendDeploy(node_url, from_wallet, code, 500000));
     } catch (err) {
-        return { cost: null, error: String(err) };
+        return { deployId: null, error: String(err) };
     }
 
-    let data: { expr: RhoExpr } | null;
-    let cost: number | null;
-    try {
-        let res = await getDataForDeploy(node_url, deployId, cancel);
-        data = res.data;
-        cost = res.cost;
-    } catch (err) {
-        return { cost: null, error: String(err) };
-    }
+    add_tx({
+        deployId,
+        kind: "transfer",
+        description: `Transfer ${amount / 100000000} REV to ${to_wallet.name || to_wallet.revAddr}`,
+        timestamp: Date.now(),
+        status: "pending",
+    });
 
-    const args = data ? rhoExprToJson(data.expr) : null;
-
-    if (args == null) {
-        return {
-            cost: null,
-            error: "Deploy found in the block, but failed to get confirmation data."
-        };
-    }
-
-    if (!Array.isArray(args) || !args[0]) {
-        const detail = Array.isArray(args) ? args[1] : args;
-        return { cost: cost ?? null, error: String(detail ?? "Transfer failed.") };
-    }
-
-    return { cost, error: null };
+    return { deployId, error: null };
 }
 
 export async function deploy(
     node_url: string,
     wallet: u.NamedWallet,
     code: string,
-    phlo_limit: number,
-    cancel: ()=>boolean = ()=>false
+    phlo_limit: number
 ): Promise<DeployResult> {
     u.wallet_normalize(wallet);
 
@@ -171,35 +117,18 @@ export async function deploy(
         ({ deployId } = await sendDeploy(node_url, wallet, code, phlo_limit));
     } catch (err) {
         console.log("Error", err);
-        return { message: null, cost: null, error: u.error_string(err) };
+        return { deployId: null, error: u.error_string(err) };
     }
 
-    let data: { expr: RhoExpr } | null;
-    let cost: number | null;
-    try {
-        let res = await getDataForDeploy(node_url, deployId, cancel);
-        data = res.data;
-        cost = res.cost;
-    } catch (err) {
-        console.log("Error", err);
-        return { message: null, cost: null, error: u.error_string(err) };
-    }
+    add_tx({
+        deployId,
+        kind: "deploy",
+        description: "Deploy rholang",
+        timestamp: Date.now(),
+        status: "pending",
+    });
 
-    const args = data ? rhoExprToJson(data.expr) : null;
-
-    if (args == null) {
-        return {
-            message: null,
-            cost: cost ?? null,
-            error: "Deploy found in the block, but data is not sent on `rho:rchain:deployId` channel."
-        };
-    }
-
-    return {
-        message: formatRhoJson(args),
-        cost: cost ?? null,
-        error: null
-    };
+    return { deployId, error: null };
 }
 
 export async function explore(

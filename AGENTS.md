@@ -89,8 +89,14 @@ Wire facts: serde enums are **externally tagged** (`{"ExprInt":42}`,
    touches it. Don't add new imports from it.
 8. **Snippet metadata** — template help text lives in `snippet_meta` (in
    `src/modules/wallet/deploy/snippets.ts`): a `description` per snippet plus
-   optional `fieldHelp`/`defaults`. The editor's EXPLAIN toggle renders them. Add
+   optional `fieldHelp`/`defaults`. The editor's EXPLAIN modal renders them. Add
    a `description` for any new snippet; don't hardcode help strings in `Deploy.tsx`.
+9. **Deploy model** — there are three operations: **explore** (read-only),
+   **deploy** (`POST /api/deploy`, always available), and **propose** (admin
+   `POST /api/propose`, gated to `devnet` nodes via `networks.ts` `devnet: true`).
+   Deploys/transfers/faucets are **submit-and-track** (`src/utils/transactions.ts`:
+   add a `pending` record, the Dashboard's TransactionList polls `deploy-status`).
+   The authoritative contract is `rchain-rust` `docs/src/developer/building-apps.md`.
 
 ## Known node-side issues (out of scope here, in `~/RNodeRust`)
 

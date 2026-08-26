@@ -1,161 +1,46 @@
-// noindex
-/*
-import { useState, ReactNode } from 'react';
-import { g, OPERATION, useMounted, useNavigateIf, RevDefine } from "utils";
-import { useLayout } from "Context";
-import { Spinner } from "components";
-import { Icon } from "assets";
-import "./TransactionList.scss";
+import { useState, useEffect } from 'react';
+import { tx } from "utils";
+import { useNodes } from "Context";
 
+const STATUS_CLASS: Record<string, string> = {
+    pending: "text-yellow-600 dark:text-yellow-400",
+    finalized: "text-green-600 dark:text-green-400",
+    failed: "text-red-600 dark:text-red-400",
+};
+
+// Lists locally-tracked submits (deploy/transfer/faucet) and polls the node's
+// deploy-status to move them from "pending" to "finalized"/"failed".
 export function TransactionList() {
-  // const node_context = useNodes();
-  // const netname = node_context.network.name || "";
-  const layout = useLayout();
+    const node_context = useNodes();
+    const [items, set_items] = useState(tx.tx_list);
 
-  const [list, set_list] = useState<RevDefine.Transaction[]>([]);
-  const [list_op, set_list_op] = useState(OPERATION.INITIAL);
-  const [error, set_error] = useState(null as string|null);
+    useEffect(() => {
+        let cancelled = false;
+        async function refresh() {
+            await tx.refresh_tx_states(node_context.get_validator_url());
+            if (!cancelled) set_items([...tx.tx_list]);
+        }
+        refresh();
+        const id = setInterval(refresh, 5000);
+        return () => { cancelled = true; clearInterval(id); };
+    }, []);
 
-  const mounted = useMounted();
-
-  useNavigateIf(!g.user, "/access");
-
-  function Wrapper(props: { children: ReactNode, hideRefresh?: boolean }) {
-    let refresh_button = list_op === OPERATION.PENDING ?
-      null :
-      <button className="Toggle" onClick={get_transactions}>
-        <Icons name="refresh" />
-      </button>;
-
-    if (props.hideRefresh) {
-      refresh_button = null;
+    if (items.length === 0) {
+        return <p className="text-sm opacity-70">No transactions yet.</p>;
     }
 
-    return <div className="Card">
-        <h3 className="Title">
-          <span>Transfers</span>
-          { refresh_button }
-        </h3>
-        <div className="Body">
-          { props.children }
-        </div>
-    </div>;
-  }
-
-  // if (netname !== "mainnet") {
-  //   return <Wrapper hideRefresh={true}>
-  //     <p>Only mainnet transactions are supported currently.</p>
-  //   </Wrapper>;
-  // }
-
-  async function get_transactions() {
-    if (!g.user) { return; }
-    set_list_op(OPERATION.PENDING);
-
-    let transactions: RevDefine.Transaction[] | null;
-    try {
-      let rev_addr = g?.user.revAddr;
-      transactions = await RevDefine.transactions(rev_addr);
-    } catch {
-      transactions = null;
-    }
-
-    if (!mounted.current) { return; }
-
-    if (!transactions) {
-      set_list_op(OPERATION.INITIAL);
-      set_error("Error while trying to fetch transaction list.");
-      return;
-    }
-
-    set_list(transactions);
-    set_list_op(OPERATION.DONE);
-  }
-
-  function format_balance(val: number) {
-    val = val / 100000000;
-    return val.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 8
-    });
-  }
-
-  function copy_action(addr: string) {
-    return () => {
-      navigator.clipboard.writeText(addr);
-      layout.push_notif({
-        group_id: "clipboard",
-        content: <p className="Alt" style={{ marginRight: "4em" }}>
-          <span>Copied</span>
-          <pre style={{ color: "white" }}>
-            {addr}
-          </pre>
-          <span>to clipboard!</span>
-        </p>
-      });
-    };
-  }
-
-  function Address(props: { addr: string }) {
-    let href = `https://revdefine.io/#/revaccounts/${props.addr}`;
-    return <div className="Row Center-X Center-Y">
-      <button onClick={copy_action(props.addr)}>
-        <img src={Assets.copy_src} alt="Copy" />
-      </button>
-      <a href={href}>{props.addr}</a>
-    </div>;
-  }
-
-  function render_transactions() {
-    let output = [];
-    for (let trans of list) {
-      output.push(<tr className="Transaction">
-        <td className="AddrType" data-title="From">
-          <Address addr={trans.fromAddr}/>
-        </td>
-        <td className="AddrType" data-title="To">
-          <Address addr={trans.toAddr}/>
-        </td>
-        <td className="AmountType" data-title="Amount">
-          <div>{format_balance(trans.amount)}</div>
-        </td>
-      </tr>);
-    }
-
-    return <tbody className="TransactionList">
-      {output}
-    </tbody>;
-  }
-
-  if (list_op === OPERATION.INITIAL && error === null) {
-    get_transactions();
-  }
-
-  if (list_op === OPERATION.PENDING) {
-    return <Wrapper>
-      <div className="Row Center-X Center-Y TransactionSpinner">
-        <Spinner op={list_op} />
-      </div>
-    </Wrapper>
-  }
-
-  if (list_op === OPERATION.DONE && list.length === 0) {
-    return <Wrapper>
-      <p>There are no recent transactions.</p>
-    </Wrapper>;
-  }
-
-  return <Wrapper>
-    <div className="TransactionTable">
-      <table>
-        <thead><tr>
-          <th><div>From</div></th>
-          <th><div>To</div></th>
-          <th><div>Amount</div></th>
-        </tr></thead>
-        {render_transactions()}
-      </table>
-    </div>
-  </Wrapper>;
+    return (
+        <ul className="flex flex-col gap-3">
+            {items.map((t) => (
+                <li key={t.deployId} className="border dark:border-base-50 border-base-900 rounded-lg p-3">
+                    <div className="flex justify-between gap-2">
+                        <span className="font-medium">{t.description}</span>
+                        <span className={`text-xs uppercase ${STATUS_CLASS[t.status] ?? ""}`}>{t.status}</span>
+                    </div>
+                    {t.error && <p className="text-xs text-red-600 dark:text-red-400 break-words">{t.error}</p>}
+                    <p className="text-xs opacity-60 font-mono break-all">{t.deployId}</p>
+                </li>
+            ))}
+        </ul>
+    );
 }
-*/
