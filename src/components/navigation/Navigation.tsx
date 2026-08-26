@@ -22,7 +22,7 @@ function NavLink(props: NavLinkProps) {
   </Link>
 }
 
-const WALLET_PATHS = ["/", "/balance", "/transfer", "/settings"];
+const WALLET_PATHS = ["/", "/balance", "/transfer", "/history", "/settings"];
 
 function WalletLinks() {
   const location = useLocation();
@@ -32,6 +32,7 @@ function WalletLinks() {
     <NavLink to="/" label="EDITOR" loc={location} />
     <NavLink to="/balance" label="BALANCE" loc={location} />
     <NavLink to="/transfer" label="TRANSFER" loc={location} />
+    <NavLink to="/history" label="HISTORY" loc={location} />
     <NavLink to="/settings" label="SETTINGS" loc={location} hide_when={wallet_is_metamask(g.user)} />
   </div>;
 }

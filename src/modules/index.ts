@@ -8,6 +8,7 @@ export * from './wallet/create/Create-Mnemonic';
 export * from './wallet/dashboard/Dashboard';
 export * from './wallet/deploy/Deploy';
 export * from './wallet/deploy/snippets';
+export * from './wallet/history/History';
 export * from './wallet/settings/Settings';
 export * from './wallet/transfer/Transfer';
 

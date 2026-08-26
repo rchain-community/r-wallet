@@ -18,6 +18,7 @@ const RoutesArray = [
 
 	{ path: "/balance", element: <Modules.Dashboard/> },
 	{ path: "/transfer", element: <Modules.Transfer/> },
+	{ path: "/history", element: <Modules.History/> },
 	{ path: "/settings", element: <Modules.Settings/> },
 ];
 
@@ -36,5 +37,6 @@ export function Routes() {
 				{routes_element}
 			</CSSTransition>
 		</TransitionGroup>
+		<Components.TransactionFeed />
 	</>;
 }

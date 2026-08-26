@@ -177,11 +177,5 @@ export function Dashboard() {
 
         <h3 className="mt-4">Network</h3>
         <Components.NodePicker />
-
-        <h3 className="mt-4">Transactions</h3>
-        {layout.help_mode && (
-            <p className="text-sm opacity-70">Your submitted deploys/transfers/faucets. Pending = in the deploy pool; finalized = included and executed; failed = errored.</p>
-        )}
-        <Components.TransactionList />
     </Components.Strip>;
 }
