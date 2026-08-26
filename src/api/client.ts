@@ -10,6 +10,8 @@ import type {
     DeployExecStatus,
     DeployRequest,
     FaucetResponse,
+    NodeCapabilities,
+    PooledDeploys,
     RhoDataResponse,
     RhoUnforg,
 } from "./types";
@@ -75,4 +77,16 @@ export async function getBlock(url: string, hash: string): Promise<BlockInfo> {
     const res = await httpFetch("GET", api(url, `block/${hash}`));
     ensureOk(res);
     return res.json as BlockInfo;
+}
+
+export async function getCapabilities(url: string): Promise<NodeCapabilities> {
+    const res = await httpFetch("GET", api(url, "v1/capabilities"));
+    ensureOk(res);
+    return res.json as NodeCapabilities;
+}
+
+export async function getPooledDeploys(url: string): Promise<PooledDeploys> {
+    const res = await httpFetch("GET", api(url, "v1/deploys"));
+    ensureOk(res);
+    return res.json as PooledDeploys;
 }

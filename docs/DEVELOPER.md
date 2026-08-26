@@ -80,6 +80,8 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 | `dataAtName(base, name, depth)` | `POST /api/data-at-name` | `{ name: RhoUnforg, depth }` | `DataAtNameResponse { exprs, length }` |
 | `getBlock(base, hash)` | `GET /api/block/:hash` | — | `BlockInfo { blockInfo, deploys }` |
 | `faucetRequest(base, address)` | `POST /api/faucet` | `{ address }` | `FaucetResponse { deployId, amount, to }` |
+| `getCapabilities(base)` | `GET /api/v1/capabilities` | — | `NodeCapabilities { autopropose, proposeOnDeploy, manualPropose, adminHttp, devMode, faucet }` |
+| `getPooledDeploys(base)` | `GET /api/v1/deploys` | — | `PooledDeploys { deploys: [PooledDeploy] }` |
 
 ### Wire facts (don't deviate)
 
@@ -136,12 +138,12 @@ The three operations an app performs against a node (per
 
 1. **Explore** — `POST /api/explore-deploy` (read-only eval); the result goes to the editor's response window.
 2. **Deploy** — sign `DeployData` and `POST /api/deploy`; the deploy lands in the pool and is included when the node proposes. Always available.
-3. **Propose** — `POST /api/propose` (admin `40405`) forces a block. **Gated to `devnet` nodes** (`networks.ts` `devnet: true`); hidden elsewhere.
+3. **Propose** — `POST /api/propose` (admin `40405`) forces a block. **Gated by `capabilities.adminHttp`** (fetched from `GET /api/v1/capabilities`); hidden elsewhere.
 
 Deploys/transfers/faucets are **submit-and-track**: `src/utils/transactions.ts` records each
 submission (`pending`), and the Transactions list on the Dashboard polls `deploy-status` to move it
-to `finalized`/`failed`. The node has no endpoint to list pooled deploys, so the wallet tracks its own
-submissions in localStorage.
+to `finalized`/`failed`. Each refresh also reconciles with the node's `GET /api/v1/deploys` (pooled
+deploys), so pending deploys are re-discovered across sessions/devices.
 
 ---
 
@@ -178,7 +180,8 @@ compatible (see the interop note below).
   no longer used for deploy/transfer/explore; only MetaMask eth-detection still
   reaches into it (`src/utils/blockchain.ts`).
 - **Don't put the deployer key in the wallet** — the devnet faucet signs
-  server-side; the wallet only needs `faucet: true` on a node.
+  server-side; the wallet discovers the faucet (and gating) from the node's
+  `GET /api/v1/capabilities`, not from hardcoded flags.
 
 ---
 
@@ -192,3 +195,7 @@ compatible (see the interop note below).
   `src/modules/wallet/deploy/snippets.ts`): a `description` per snippet, plus
   optional `fieldHelp`/`defaults`. The editor's EXPLAIN modal renders these;
   don't hardcode help strings in `Deploy.tsx`.
+- A global **help mode** (toggled from the Navigation) reveals inline hints;
+  one-off helper modals (`SnippetExplainModal`, `DeployHelpModal`) explain a
+  snippet or the deploy operations. Keep explanation text in the modal/hint,
+  not scattered in the UI.

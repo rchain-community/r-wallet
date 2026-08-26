@@ -1,6 +1,7 @@
 import React, { type ReactNode, useContext } from "react";
 import type { Modal, ModalBase } from "components";
 import type { nw } from "utils";
+import type { NodeCapabilities } from "api";
 
 export interface Notif {
 	content: ReactNode,
@@ -17,6 +18,9 @@ export interface LayoutContext {
 	notif_stack: Notif[];
 	push_notif(data: Notif): void;
 	remove_notif(data: Notif): void;
+
+	help_mode: boolean;
+	set_help_mode(v: boolean): void;
 };
 
 export interface NodeContext {
@@ -29,6 +33,7 @@ export interface NodeContext {
 	get_validator_url(): string;
 	get_readonly_url(): string;
 	get_admin_url(): string;
+	capabilities: NodeCapabilities | null;
 };
 
 export const NodeContext = React.createContext({} as NodeContext);

@@ -60,7 +60,7 @@ export async function faucet(
 	ctx: NodeContext
 ) {
 	if (!user) { return null; }
-	if (!ctx.node.faucet) { return null; }
+	if (!ctx.capabilities?.faucet) { return null; }
 	let url = ctx.get_validator_url();
 	const { faucet: faucet_funds } = await import("../api/faucet");
 	try {

@@ -2,6 +2,7 @@ export * from './buttons/Button';
 export * from './containers/Containers';
 export * from './modal-host/ModalHost';
 export * from './modals/ModalBase';
+export * from './modals/Deploy-Help-Modal';
 export * from './modals/Pass-Confirm-Modal';
 export * from './modals/Snippet-Explain-Modal';
 export * from './modals/Wallet-Lock-Modal';

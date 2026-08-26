@@ -157,9 +157,12 @@ export function Dashboard() {
             </div>
         </div>
 
-        {node_context.node.faucet && (
+        {node_context.capabilities?.faucet && (
             <div className="mt-4 flex flex-col gap-2">
                 <p className="text-xs text-yellow-600 dark:text-yellow-400">DEV/TEST ONLY — funds from the devnet deployer.</p>
+                {layout.help_mode && (
+                    <p className="text-sm opacity-70">Transfers 0.3 REV from the devnet's funded deployer wallet to your address.</p>
+                )}
                 <Components.Spinner
                     op={faucet_op}
                     className="w-8 h-8"
@@ -176,6 +179,9 @@ export function Dashboard() {
         <Components.NodePicker />
 
         <h3 className="mt-4">Transactions</h3>
+        {layout.help_mode && (
+            <p className="text-sm opacity-70">Your submitted deploys/transfers/faucets. Pending = in the deploy pool; finalized = included and executed; failed = errored.</p>
+        )}
         <Components.TransactionList />
     </Components.Strip>;
 }

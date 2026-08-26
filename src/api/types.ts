@@ -99,6 +99,29 @@ export interface FaucetResponse {
     to: string;
 }
 
+export interface NodeCapabilities {
+    autopropose: boolean;
+    proposeOnDeploy: boolean;
+    manualPropose: boolean;
+    adminHttp: boolean;
+    devMode: boolean;
+    faucet: boolean;
+}
+
+export interface PooledDeploy {
+    deployId: string;
+    timestamp: number;
+    deployer: string;
+    term: string;
+    phloPrice: number;
+    phloLimit: number;
+    validAfterBlockNumber: number;
+}
+
+export interface PooledDeploys {
+    deploys: PooledDeploy[];
+}
+
 export type DeployExecStatus =
     | { ProcessedWithSuccess: { deployResult: RhoExpr[]; block: LightBlockInfo } }
     | { ProcessedWithError: { deployError: string; block: LightBlockInfo } }

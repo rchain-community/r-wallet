@@ -250,6 +250,13 @@ export function Deploy() {
     });
   }
 
+  function help_deploy() {
+    layout.push_modal({
+      component: Components.DeployHelpModal,
+      props: { onFinish: () => {} },
+    });
+  }
+
   useEffect(
     () => CodeEditor({
       rootRef: editor_ref,
@@ -269,6 +276,10 @@ export function Deploy() {
   return <Components.Strip bg="" className="sm:mt-16 max-w-[90vw] w-full">
       <h2>Deploy Rholang Code</h2>
 
+      {layout.help_mode && (
+        <p className="text-sm opacity-70">EXPLORE evaluates read-only and shows the result in the output window. DEPLOY signs and submits your rholang (track its status in Transactions). PROPOSE forces a block and only appears on a devnet.</p>
+      )}
+
       <div className="flex flex-col md:flex-row gap-4">
 
         <div className="flex flex-col flex-1 gap-4 overflow-hidden">
@@ -280,6 +291,9 @@ export function Deploy() {
             </label>
             <Components.Button onClick={explain_snippet}>
               EXPLAIN
+            </Components.Button>
+            <Components.Button onClick={help_deploy}>
+              ?
             </Components.Button>
           </div>
 
@@ -323,7 +337,7 @@ export function Deploy() {
                   DEPLOY
                 </Components.Button>
 
-                {node_context.node.devnet && (
+                {node_context.capabilities?.adminHttp && (
                   <Components.Button
                     disabled={!code.value || phlo_limit.value <= 0}
                     onClick={propose}

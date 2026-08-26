@@ -2,6 +2,7 @@ import { useLocation, Link, Location } from 'react-router-dom';
 import { g, wallet_is_metamask, useTheme } from 'utils';
 import { Icon } from "assets";
 import * as Components from "components";
+import { useLayout } from "Context";
 import { BRAND } from "../../config/branding";
 
 interface NavLinkProps {
@@ -37,6 +38,7 @@ function WalletLinks() {
 
 export function Navigation() {
   let theme = useTheme();
+  let layout = useLayout();
 
   let switcher_class = "absolute right-4 top-8 bg-transparent dark:bg-transparent p-2 rounded-full";
   let theme_switcher: JSX.Element;
@@ -65,6 +67,12 @@ export function Navigation() {
   return (
     <div className="flex flex-col gap-2 relative">
       {theme_switcher}
+      <Components.Button
+        className="absolute right-16 top-8 bg-transparent dark:bg-transparent p-2 rounded-full text-xs"
+        onClick={() => layout.set_help_mode(!layout.help_mode)}
+      >
+        {layout.help_mode ? "HIDE HELP" : "HELP"}
+      </Components.Button>
       <Link className="flex justify-center mx-auto p-8 text-3xl font-bold tracking-wider" to="/">
           {BRAND.name}
       </Link>

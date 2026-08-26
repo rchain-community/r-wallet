@@ -1,8 +1,9 @@
 import './styles/index.scss';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import { g, nw, tx, useLocalStorage } from 'utils';
+import { getCapabilities, type NodeCapabilities } from 'api';
 import * as Components from 'components';
 import { LayoutContext, NodeContext, Notif } from "./Context";
 import type { Modal } from "components";
@@ -28,6 +29,18 @@ export function App() {
 
 	let [modal_stack, set_modal_stack] = useState<Modal<any>[]>([]);
 	let [notif_stack, set_notif_stack] = useState<Notif[]>([]);
+
+	let [capabilities, set_capabilities] = useState<NodeCapabilities | null>(null);
+	let [help_mode, set_help_mode] = useState(false);
+
+	useEffect(() => {
+		let cancelled = false;
+		set_capabilities(null);
+		getCapabilities(nw.get_node_url(node))
+			.then((c) => { if (!cancelled) set_capabilities(c); })
+			.catch(() => { if (!cancelled) set_capabilities(null); });
+		return () => { cancelled = true; };
+	}, [node]);
 
 	let initial_data = {
 		node, set_node(val) { set_node(val) },
@@ -87,7 +100,9 @@ export function App() {
 				...node,
 				port: 40405
 			});
-		}
+		},
+
+		capabilities,
 
 	} satisfies NodeContext;
 
@@ -117,7 +132,10 @@ export function App() {
 		},
 		remove_notif(notif: Notif) {
 			set_notif_stack(notif_stack.filter(n=>n.__id !== notif.__id));
-		}
+		},
+
+		help_mode,
+		set_help_mode(v: boolean) { set_help_mode(v); },
 
 	} satisfies LayoutContext;
 

@@ -62,6 +62,8 @@ One convention in `client.ts`: `httpFetch(METHOD, path, body?) → ensureOk → 
 | `dataAtName` | `POST /api/data-at-name` |
 | `getBlock` | `GET /api/block/:hash` |
 | `faucetRequest` | `POST /api/faucet` |
+| `getCapabilities` | `GET /api/v1/capabilities` |
+| `getPooledDeploys` | `GET /api/v1/deploys` |
 
 Wire facts: serde enums are **externally tagged** (`{"ExprInt":42}`,
 `{"UnforgDeploy":"<hex>"}`); `deploy`/`propose` return **JSON-encoded strings**;
@@ -79,7 +81,8 @@ Wire facts: serde enums are **externally tagged** (`{"ExprInt":42}`,
 3. **No `any`** in the API-touching path (`client.ts`, `rnode.ts`, `rho-json.ts`,
    `faucet.ts`). Add DTOs/`*Result` types to `src/api/types.ts`.
 4. **No deployer private key in the wallet** — the devnet faucet signs server-side;
-   a node only needs `faucet: true` in `networks.ts`.
+   the wallet discovers the faucet and gating from `GET /api/v1/capabilities`, not
+   hardcoded flags.
 5. **Node-ESM interop** — `blakejs`/`elliptic` are CJS with undetectable named
    exports, so import them as **defaults**; `blockchain.ts`'s `module_proxy`
    falls back to `.default`. Preserve this for anything the `tsx` test imports.
@@ -91,18 +94,19 @@ Wire facts: serde enums are **externally tagged** (`{"ExprInt":42}`,
    `src/modules/wallet/deploy/snippets.ts`): a `description` per snippet plus
    optional `fieldHelp`/`defaults`. The editor's EXPLAIN modal renders them. Add
    a `description` for any new snippet; don't hardcode help strings in `Deploy.tsx`.
-9. **Deploy model** — there are three operations: **explore** (read-only),
-   **deploy** (`POST /api/deploy`, always available), and **propose** (admin
-   `POST /api/propose`, gated to `devnet` nodes via `networks.ts` `devnet: true`).
+9. **Deploy model** — three operations: **explore** (read-only), **deploy**
+   (`POST /api/deploy`, always available), and **propose** (admin `POST /api/propose`,
+   gated by `capabilities.adminHttp`, fetched from `GET /api/v1/capabilities`).
    Deploys/transfers/faucets are **submit-and-track** (`src/utils/transactions.ts`:
-   add a `pending` record, the Dashboard's TransactionList polls `deploy-status`).
-   The authoritative contract is `rchain-rust` `docs/src/developer/building-apps.md`.
+   add a `pending` record, then `refresh_tx_states` polls `deploy-status` AND
+   reconciles with `GET /api/v1/deploys`). Authoritative contract: `rchain-rust`
+   `docs/src/developer/building-apps.md`.
+10. **Help** — a global **help mode** (LayoutContext) reveals inline hints;
+    helper modals (`SnippetExplainModal`, `DeployHelpModal`) explain a snippet or
+    the deploy operations. Keep explanation copy in the modal/hint, not inline.
 
 ## Known node-side issues (out of scope here, in `~/RNodeRust`)
 
-- `revVault` transfer writes don't persist (target not credited; only phlo deducted) —
-  blocks the faucet end-to-end. Repro + prompt context in `docs/DEVELOPER.md` and
-  the recent git history.
 - `explore-deploy` OpenAPI doc-vs-handler discrepancy (`explore-deploy` body is a raw
   string, not `ExploreDeployRequest`).
 
