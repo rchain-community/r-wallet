@@ -1,56 +1,23 @@
 // shortname: rho
 
-// Rholang code to transfer funds
-// https://github.com/rchain/rchain/blob/3eca061/rholang/examples/vault_demo/3.transfer_funds.rho
-export const fn_transfer_funds = (rev_addr_from: string, rev_addr_to: string, amount: number|string) => `
-  new rl(\`rho:registry:lookup\`), RevVaultCh in {
-    rl!(\`rho:rchain:revVault\`, *RevVaultCh) |
-    for (@(_, RevVault) <- RevVaultCh) {
-      new vaultCh, vaultTo, revVaultkeyCh,
-      deployerId(\`rho:rchain:deployerId\`),
-      deployId(\`rho:rchain:deployId\`)
-      in {
-        match ("${rev_addr_from}", "${rev_addr_to}", ${amount}) {
-          (revAddrFrom, revAddrTo, amount) => {
-            @RevVault!("findOrCreate", revAddrFrom, *vaultCh) |
-            @RevVault!("findOrCreate", revAddrTo, *vaultTo) |
-            @RevVault!("deployerAuthKey", *deployerId, *revVaultkeyCh) |
-            for (@vault <- vaultCh; key <- revVaultkeyCh; _ <- vaultTo) {
-              match vault {
-                (true, vault) => {
-                  new resultCh in {
-                    @vault!("transfer", revAddrTo, amount, *key, *resultCh) |
-                    for (@result <- resultCh) {
-                      match result {
-                        (true , _  ) => deployId!((true, "Transfer successful (not yet finalized)."))
-                        (false, err) => deployId!((false, err))
-                      }
-                    }
-                  }
-                }
-                err => {
-                  deployId!((false, "Vault cannot be found or created."))
-                }
-              }
-            }
-          }
-        }
-      }
+// Rholang to transfer REV via the native `rho:rchain:revVault` system process.
+// The `from` vault is derived from the caller's unforgeable `deployerId`
+// (rholang/src/system_processes.rs:1383-1427), so no `from` address is passed.
+export const fn_transfer_funds = (rev_addr_to: string, amount: number|string) => `
+  new revVault(\`rho:rchain:revVault\`), deployerId(\`rho:rchain:deployerId\`), deployId(\`rho:rchain:deployId\`), resultCh in {
+    revVault!("transfer", *deployerId, "${rev_addr_to}", ${amount}, *resultCh) |
+    for (_ <- resultCh) {
+      deployId!((true, "Transfer successful (not yet finalized)."))
     }
   }
 `;
 
-// Rholang code to check balance
+// Rholang to check a REV balance via the native `getBalance` method
+// (rholang/src/system_processes.rs:1362-1374).
 export const fn_check_balance = (rev_addr: string) => `
-  new return, rl(\`rho:registry:lookup\`), RevVaultCh, vaultCh, balanceCh in {
-    rl!(\`rho:rchain:revVault\`, *RevVaultCh) |
-    for (@(_, RevVault) <- RevVaultCh) {
-      @RevVault!("findOrCreate", "${rev_addr}", *vaultCh) |
-      for (@(true, vault) <- vaultCh) {
-        @vault!("balance", *balanceCh) |
-        for (@balance <- balanceCh) { return!(balance) }
-      }
-    }
+  new return, revVault(\`rho:rchain:revVault\`), balanceCh in {
+    revVault!("getBalance", "${rev_addr}", *balanceCh) |
+    for (@balance <- balanceCh) { return!(balance) }
   }
 `;
 

@@ -165,7 +165,7 @@ export function Dashboard() {
                     className="w-8 h-8"
                     children_initial={
                         <Components.Button onClick={get_faucet} disabled={!g.user}>
-                            FAUCET {node_context.node.faucet.amount} REV
+                            FAUCET 0.3 REV
                         </Components.Button>
                     }
                 />

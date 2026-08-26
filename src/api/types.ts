@@ -93,6 +93,12 @@ export interface DeployRequest {
     sigAlgorithm: string;
 }
 
+export interface FaucetResponse {
+    deployId: string;
+    amount: number;
+    to: string;
+}
+
 export type DeployExecStatus =
     | { ProcessedWithSuccess: { deployResult: RhoExpr[]; block: LightBlockInfo } }
     | { ProcessedWithError: { deployError: string; block: LightBlockInfo } }

@@ -66,7 +66,7 @@ export async function faucet(
 	let url = ctx.get_validator_url();
 	const { faucet: faucet_funds } = await import("../api/faucet");
 	try {
-		const res = await faucet_funds(url, user.revAddr, ctx.node.faucet);
+		const res = await faucet_funds(url, user.revAddr);
 		return { deployId: res.deployId, error: null };
 	} catch (err) {
 		return { deployId: null, error: u.error_string(err) };

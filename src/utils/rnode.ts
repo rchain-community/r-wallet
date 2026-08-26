@@ -121,7 +121,7 @@ export async function transfer(
 ): Promise<TransferResult> {
     u.wallet_normalize(from_wallet);
     u.wallet_normalize(to_wallet);
-    const code = rho.fn_transfer_funds(from_wallet.revAddr, to_wallet.revAddr, amount);
+    const code = rho.fn_transfer_funds(to_wallet.revAddr, amount);
 
     let deployId: string;
     try {

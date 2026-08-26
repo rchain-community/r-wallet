@@ -109,7 +109,7 @@ async function main() {
     let funded: { deployId: string } | null = null;
     try {
         funded = await Promise.race([
-            faucet(HTTP, target!.revAddr, { privateKey: DEPLOYER_PRIV, amount: 1000 }),
+            faucet(HTTP, target!.revAddr),
             new Promise<never>((_, rej) => setTimeout(() => rej(new Error("faucet timed out (node not producing blocks)")), 45000)),
         ]);
     } catch (e) {

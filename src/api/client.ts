@@ -9,6 +9,7 @@ import type {
     DataAtNameResponse,
     DeployExecStatus,
     DeployRequest,
+    FaucetResponse,
     RhoDataResponse,
     RhoUnforg,
 } from "./types";
@@ -42,6 +43,12 @@ export async function deploy(url: string, signed: DeployRequest): Promise<string
     const m = result.match(/DeployId is: ([0-9a-fA-F]+)/);
     if (!m) throw new Error(result || "Deploy did not return a deploy id.");
     return m[1];
+}
+
+export async function faucetRequest(url: string, address: string): Promise<FaucetResponse> {
+    const res = await httpFetch("POST", api(url, "faucet"), JSON.stringify({ address }));
+    ensureOk(res);
+    return res.json as FaucetResponse;
 }
 
 export async function deployStatus(url: string, deployId: string): Promise<DeployExecStatus> {
