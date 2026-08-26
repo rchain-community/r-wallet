@@ -3,6 +3,8 @@
 
 import {
     getStatus,
+    getCapabilities,
+    getPooledDeploys,
     exploreDeploy,
     deploy,
     deployStatus,
@@ -15,6 +17,8 @@ import { rhoExprToJson } from "../src/api/rho-json";
 import { faucet } from "../src/api/faucet";
 import * as bc from "../src/utils/blockchain";
 import * as rho from "../src/utils/rho";
+import * as rnode from "../src/utils/rnode";
+import { tx_list, refresh_tx_states } from "../src/utils/transactions";
 import type { DeployData } from "../src/api/types";
 
 const HTTP = "http://localhost:40403";
@@ -132,6 +136,37 @@ async function main() {
     const targetBal = await exploreDeploy(HTTP, rho.fn_check_balance(target!.revAddr));
     const fundedAmt = targetBal.expr[0] && "ExprInt" in targetBal.expr[0] ? targetBal.expr[0].ExprInt : 0;
     check(fundedAmt > 0, `faucet funded target (balance=${fundedAmt}${fundedAmt === 0 ? " — node-side revVault transfer persistence bug" : ""})`);
+
+    // 10. capabilities + pooled deploys
+    const caps = await getCapabilities(HTTP);
+    check(typeof caps.autopropose === "boolean", `capabilities.autopropose = ${caps.autopropose}`);
+    check(typeof caps.proposeOnDeploy === "boolean", `capabilities.proposeOnDeploy = ${caps.proposeOnDeploy}`);
+    check(typeof caps.adminHttp === "boolean", `capabilities.adminHttp = ${caps.adminHttp}`);
+    check(typeof caps.faucet === "boolean", `capabilities.faucet = ${caps.faucet}`);
+
+    const pool = await getPooledDeploys(HTTP);
+    check(Array.isArray(pool.deploys), "getPooledDeploys returns a deploys array");
+
+    // 11. rnode seam: check_balance / transfer / deploy
+    const deployerWallet = { name: "deployer", ...deployer! };
+    const seamBal = await rnode.check_balance(HTTP, deployer!.revAddr);
+    check(typeof seamBal.balance === "number" && seamBal.balance >= 0, `rnode.check_balance returns a balance (${seamBal.balance})`);
+
+    tx_list.length = 0;
+    const toWallet = { name: "target", ...(await bc.create_account())! };
+    const transferRes = await rnode.transfer(HTTP, deployerWallet, toWallet, 100000000);
+    check(/^[0-9a-f]+$/.test(transferRes.deployId ?? ""), `rnode.transfer returns a deployId (${transferRes.deployId?.slice(0, 16)}...)`);
+    check(tx_list.some(t => t.deployId === transferRes.deployId), "rnode.transfer records a pending transaction");
+
+    const deployRes = await rnode.deploy(HTTP, deployerWallet, "new deployId(`rho:rchain:deployId`) in { deployId!(42) }", 500000);
+    check(/^[0-9a-f]+$/.test(deployRes.deployId ?? ""), `rnode.deploy returns a deployId (${deployRes.deployId?.slice(0, 16)}...)`);
+    check(Array.isArray(deployRes.expr), `rnode.deploy returns the result expr (${JSON.stringify(deployRes.expr)})`);
+    check(tx_list.some(t => t.deployId === deployRes.deployId), "rnode.deploy records a pending transaction");
+
+    // 12. reconciliation: refresh_tx_states finalizes a processed deploy
+    await refresh_tx_states(HTTP);
+    const tx = tx_list.find(t => t.deployId === deployRes.deployId);
+    check(tx?.status === "finalized", `refresh_tx_states finalizes a processed deploy (${tx?.status})`);
 
     console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
     process.exit(failures === 0 ? 0 : 1);

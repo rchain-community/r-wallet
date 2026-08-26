@@ -17,6 +17,8 @@ Stack: React 18 + TypeScript + Vite + Tailwind + Monaco + react-router.
 npm install
 npm start            # Vite dev server (http://localhost:5173)
 npm run build        # tsc && vite build (type-check + bundle)
+npm run test:unit    # tsx scripts/test-unit.ts — pure unit tests (no devnet)
+npm run test:rho-json # tsx scripts/test-rho-json.ts — JSON conversion
 npm run test:api     # tsx scripts/test-api.ts — integration test vs a running devnet
 npm run serve        # vite preview
 ```

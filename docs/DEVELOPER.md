@@ -150,17 +150,23 @@ deploys), so pending deploys are re-discovered across sessions/devices.
 ## Testing
 
 ```bash
-npm run test:api      # tsx scripts/test-api.ts
+npm run test:unit       # pure unit tests — no devnet required
+npm run test:rho-json   # rhoExprToJson + formatRhoJson
+npm run test:api        # integration test against a running devnet
 ```
 
-The integration test imports the **real** `src/api` modules and, against a running
-devnet, asserts every endpoint's shape and exercises the faucet end-to-end:
+**Unit tests** (`scripts/test-unit.ts`) import the real modules and cover, without a
+devnet: deploy signing (`signDeploy` + the `shardId` field-11 serialization), REV address
+derivation, the native `revVault` rholang templates, snippet generation + `snippet_meta`
+completeness, `client` response parsing (stubbed `fetch`), and `transactions`
+`add_tx`/pooled-deploys reconciliation.
 
-1. `getStatus` shape, 2. `exploreDeploy` + `rhoExprToJson`, 3. `check_balance`
-(`getBalance`), 4. `deploy` + `deployStatus` polling, 5. `dataAtName`, 6. `getBlock`,
-7. `propose`, 8. `faucet` → target funded.
+**Integration test** (`scripts/test-api.ts`) asserts every `client.*` endpoint's shape and,
+end-to-end against the devnet, exercises `check_balance`, `deploy` (+ `deploy-status`),
+`transfer`, `propose`, `faucet`, the `rnode` seam, capabilities, pooled deploys, and
+transaction reconciliation.
 
-It runs under Node via `tsx` (not Vite), so the API modules must be Node-ESM
+All tests run under Node via `tsx` (not Vite), so the API modules must be Node-ESM
 compatible (see the interop note below).
 
 `npm run build` runs `tsc && vite build` (type-check + bundle).

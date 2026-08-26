@@ -248,8 +248,7 @@ export async function is_valid_rev_address(rev_addr: string) {
 	const checksum = rev_hex.slice(-8);
 
 	const payload_bytes = await eth_util.toBuffer(payload);
-	const blake2bHex = (await import("blakejs")).blake2bHex;
-	const checksum_calc = blake2bHex(payload_bytes, undefined, 32).slice(0, 8);
+	const checksum_calc = (await blakejs.blake2bHex(payload_bytes, undefined, 32)).slice(0, 8);
 
 	return checksum === checksum_calc;
 }
