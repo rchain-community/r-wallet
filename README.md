@@ -13,6 +13,25 @@ no backend proxy.
   file, mnemonic phrase, private key, MetaMask, or a locally-stored wallet.
 - **Devnet faucet** — one click to fund a fresh address on a local devnet.
 
+## The rgov successor
+
+R Wallet is the modern successor to [rgov](https://github.com/rchain-community/rgov),
+RChain's earlier governance / liquid-democracy app. rgov's dev interface was a
+rholang deployer with a dropdown of governance contract templates; R Wallet carries
+those templates forward in a fresh React/Vite UI and adds the wallet layer that
+rgov lacked.
+
+The governance templates map to liquid-democracy primitives:
+
+- **Ballot / Issue / Vote** — proposals, voting, vote delegation, and tallying.
+- **Group / MemberDirectory / Roll** — membership and voter registration.
+- **Inbox / Chat / Mail / Share** — messaging between members.
+- **Kudos** — a peer-to-peer trust metric.
+- **Mint** — issuing a community token.
+
+rgov had no first-class wallet: R Wallet adds REV balance/transfer and a devnet
+faucet, and talks directly to the Rust RNode HTTP API.
+
 ## Stack
 
 React 18 · TypeScript · Vite · Tailwind CSS · Monaco (`@monaco-editor/react`) ·
