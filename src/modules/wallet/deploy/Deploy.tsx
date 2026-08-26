@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, RefObject } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { useNodes } from "Context";
+import { useNodes, useLayout } from "Context";
 import * as Components from "components";
 import * as u from 'utils';
 import Editor, { loader, type EditorProps } from "@monaco-editor/react";
@@ -71,19 +71,15 @@ function Snippet_Fields(
     snippet: Snippet,
     args: (string|null)[],
     set_field: (idx: number, val: any) => void,
-    show_help: boolean,
     field_help: Record<string, string>
   }
 ) {
   let fields = props.snippet.fields.map((field, i) => {
-    const help = props.field_help[field.name];
-
-    return <label title={field.name} key={field.name} className="flex-1 basis-28">
+    return <label title={props.field_help[field.name] ?? field.name} key={field.name} className="flex-1 basis-28">
           <input placeholder={field.name}
             value={props.args[i] ?? ""}
             onChange={(v) => props.set_field(i, v.target.value)}
           />
-          {props.show_help && help && <p className="text-xs opacity-70 mt-1">{help}</p>}
     </label>;
   });
 
@@ -94,6 +90,7 @@ function Snippet_Fields(
 
 export function Deploy() {
   const node_context = useNodes();
+  const layout = useLayout();
   const code = u.useWritable("");
   const output_ref = useRef<HTMLPreElement>(null);
   const editor_ref = useRef<HTMLDivElement>(null);
@@ -104,7 +101,6 @@ export function Deploy() {
   const [msg,  set_msg] = useState<string|null>();
   const [cost, set_cost] = useState<number|null>(1);
   const [op, set_op] = useState(u.OPERATION.INITIAL);
-  const [show_help, set_show_help] = useState(false);
   const theme = u.useTheme();
 
   u.useNavigateIf(!u.g.user, "/access");
@@ -240,6 +236,20 @@ export function Deploy() {
     return <option key={snippet} value={snippet}>{snippet}</option>
   }
 
+  function explain_snippet() {
+    layout.push_modal({
+      component: Components.SnippetExplainModal,
+      props: {
+        name: snippet as string,
+        description: snippet_meta[snippet].description,
+        purpose: snippet_meta[snippet].purpose,
+        fields: snippets[snippet].fields,
+        field_help: { ...common_field_help, ...snippet_meta[snippet].fieldHelp },
+        onFinish: () => {},
+      },
+    });
+  }
+
   useEffect(
     () => CodeEditor({
       rootRef: editor_ref,
@@ -268,20 +278,15 @@ export function Deploy() {
                 {snippet_keys.map(snippet_option)}
               </select>
             </label>
-            <Components.Button onClick={() => set_show_help(!show_help)}>
-              {show_help ? "HIDE HELP" : "EXPLAIN"}
+            <Components.Button onClick={explain_snippet}>
+              EXPLAIN
             </Components.Button>
           </div>
-
-          {show_help && (
-            <p className="text-sm opacity-80">{snippet_meta[snippet].description}</p>
-          )}
 
           <Snippet_Fields
             snippet={snippets[snippet]}
             args={args}
             set_field={set_arg}
-            show_help={show_help}
             field_help={{ ...common_field_help, ...snippet_meta[snippet].fieldHelp }}
           />
 

@@ -3,6 +3,7 @@ export * from './containers/Containers';
 export * from './modal-host/ModalHost';
 export * from './modals/ModalBase';
 export * from './modals/Pass-Confirm-Modal';
+export * from './modals/Snippet-Explain-Modal';
 export * from './modals/Wallet-Lock-Modal';
 export * from './navigation/Navigation';
 export * from './node-picker/NodePicker';

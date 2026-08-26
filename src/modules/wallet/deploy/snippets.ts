@@ -1031,17 +1031,20 @@ export const snippets = {
 // per-field help text, and optional default field values (ported from rgov).
 export type SnippetMeta = {
     description: string;
+    purpose: string;
     fieldHelp?: Record<string, string>;
     defaults?: Record<string, string>;
 };
 
-// Hints shared across many templates (used by the explainer UI).
+// Hints shared across many templates (used by the explainer modal + field tooltips).
 export const common_field_help: Record<string, string> = {
-    lockerTag: "Which inbox \"locker\" to use (defaults to \"inbox\").",
-    ReadcapURI: "Master read-capability URI.",
-    toInboxURI: "Recipient's inbox URI.",
-    delegateURI: "URI to delegate your vote to.",
+    lockerTag: "Which inbox \"locker\" this contract reads/writes (defaults to \"inbox\").",
+    ReadcapURI: "The master read-capability URI that grants access to your governance identity.",
+    toInboxURI: "The recipient member's inbox URI.",
+    delegateURI: "The inbox URI you are delegating your vote to.",
     amount: "Amount in drops (1 REV = 100,000,000 drops).",
+    revAddrFrom: "The source REV address (defaults to your wallet).",
+    revAddrTo: "The destination REV address.",
 };
 
 // Defaults shared across many templates.
@@ -1050,53 +1053,157 @@ export const common_field_defaults: Record<string, string> = {
 };
 
 export const snippet_meta: Record<keyof typeof snippets, SnippetMeta> = {
-    blank: { description: "Empty starting point — write rholang from scratch." },
-    checkBalance: { description: "Read the REV balance of a wallet address." },
+    blank: {
+        description: "An empty editor with no pre-filled rholang.",
+        purpose: "Start from scratch and write any rholang term by hand.",
+    },
+    checkBalance: {
+        description: "Read the REV balance of a wallet address.",
+        purpose: "Confirm a wallet's balance before transferring or spending.",
+        fieldHelp: { myGovRevAddr: "The REV address to check (defaults to your wallet)." },
+    },
     transfer: {
         description: "Transfer REV from your wallet to another address.",
+        purpose: "Move REV between wallets on the network.",
         defaults: { amount: "100000000" },
     },
-    sequencialLooping: { description: "Demo of sequential looping and recursion in rholang." },
-    newInbox: { description: "Claim your dictionary and inbox from the master contract." },
-    peekInbox: { description: "Peek at inbox messages (optionally filtered by type/subtype)." },
-    receiveFromInbox: { description: "Consume (receive) a message from your inbox." },
-    createInboxandCastVote: { description: "Create an inbox and cast a vote (placeholder)." },
-    newChat: { description: "Create a chat channel with pub/sub capabilities." },
-    sendChat: { description: "Send a message to a chat channel." },
-    readChat: { description: "Read the next message from a chat channel." },
-    newBallot: { description: "Create a ballot and grant voting rights." },
-    castBallot: { description: "Cast a vote on a ballot." },
-    newIssue: { description: "Create an issue with a set of proposals." },
-    addVoterToIssue: { description: "Grant a voter the right to vote on an issue." },
-    addGroupToIssue: { description: "Grant every member of a group the right to vote on an issue." },
-    castVote: { description: "Cast a vote on an issue." },
-    displayVote: { description: "Show the current vote choices on an issue." },
-    delegateVote: { description: "Delegate your vote on an issue to another inbox." },
-    tallyVotes: { description: "Tally the votes on an issue." },
-    share: { description: "Share an object from your inbox to another inbox." },
-    sendMail: { description: "Send an email-style message to another inbox." },
-    newGroup: { description: "Create a new group/community." },
-    joinGroup: { description: "Request to join a group." },
-    addMember: { description: "Add a member to a group." },
-    newMemberDirectory: { description: "Create a new member directory." },
+    sequencialLooping: {
+        description: "A worked example of sequential looping and recursion.",
+        purpose: "Learn rholang control flow with a counting recursion example.",
+    },
+    newInbox: {
+        description: "Claim the dictionary and inbox the master contract issues you.",
+        purpose: "Bootstrap your governance identity so other contracts can message you.",
+    },
+    peekInbox: {
+        description: "Peek at inbox messages without consuming them.",
+        purpose: "Inspect what another member sent you (optionally filtered by type/subtype).",
+    },
+    receiveFromInbox: {
+        description: "Consume (receive) a message from your inbox.",
+        purpose: "Take a message out of the inbox so you can act on it.",
+    },
+    createInboxandCastVote: {
+        description: "Create an inbox and cast a vote in one step.",
+        purpose: "Combined identity-setup + voting entry point (placeholder).",
+    },
+    newChat: {
+        description: "Create a chat channel and get its pub/sub capabilities.",
+        purpose: "Start a private channel and hand out publish/subscribe capabilities.",
+    },
+    sendChat: {
+        description: "Publish a message to a chat channel.",
+        purpose: "Send a message to everyone subscribed to a channel.",
+    },
+    readChat: {
+        description: "Read the next message from a chat channel.",
+        purpose: "Pull the latest message from a channel you subscribe to.",
+    },
+    newBallot: {
+        description: "Create a ballot with a number of choices and grant voting rights.",
+        purpose: "Set up a vote: define the ballot and hand out voter capabilities.",
+    },
+    castBallot: {
+        description: "Cast your choice on a ballot.",
+        purpose: "Submit your vote on an existing ballot.",
+    },
+    newIssue: {
+        description: "Create an issue with a set of proposals.",
+        purpose: "Open a proposal for the group to deliberate and vote on.",
+    },
+    addVoterToIssue: {
+        description: "Grant a specific voter the right to vote on an issue.",
+        purpose: "Authorize an individual member to vote on a proposal.",
+    },
+    addGroupToIssue: {
+        description: "Grant every member of a group the right to vote on an issue.",
+        purpose: "Authorize a whole group to vote on a proposal at once.",
+    },
+    castVote: {
+        description: "Record your vote on an issue.",
+        purpose: "Cast your vote (or abstain) on an existing proposal.",
+    },
+    displayVote: {
+        description: "Show the current choices/votes on an issue.",
+        purpose: "Inspect how people have voted so far.",
+    },
+    delegateVote: {
+        description: "Delegate your vote on an issue to another inbox.",
+        purpose: "Hand your vote to another member (the core of liquid democracy).",
+    },
+    tallyVotes: {
+        description: "Tally the votes on an issue.",
+        purpose: "Count the votes and produce the result.",
+    },
+    share: {
+        description: "Forward an object from your inbox to another inbox.",
+        purpose: "Send something you hold to another member's inbox.",
+    },
+    sendMail: {
+        description: "Send a structured email-style message to another inbox.",
+        purpose: "Send a member a message with subject and body.",
+    },
+    newGroup: {
+        description: "Create a new group/community.",
+        purpose: "Create a group you administer, with membership capabilities.",
+    },
+    joinGroup: {
+        description: "Request membership in a group.",
+        purpose: "Ask to join an existing community.",
+    },
+    addMember: {
+        description: "Add a member to a group.",
+        purpose: "Admit a new member into a group you administer.",
+    },
+    newMemberDirectory: {
+        description: "Create a member directory.",
+        purpose: "Create the directory that tracks members and registration.",
+    },
     makeMint: {
         description: "Create a new token mint.",
+        purpose: "Issue your own community token.",
         defaults: { name: "myTokenMint" },
     },
-    helloWorld: { description: "Minimal hello-world — write to stdout." },
-    getRoll: { description: "Read the membership roll (registered voters)." },
-    peekKudos: { description: "Peek at the current kudos value." },
-    awardKudos: { description: "Award kudos to someone." },
-    claimWithInbox: { description: "Set up your inbox via the member directory." },
-    checkRegistration: { description: "Check whether an address is registered on the roll." },
-    lookupURI: { description: "Look up the object registered at a URI." },
-    createURI: { description: "Insert an arbitrary value into the registry and get its URI." },
+    helloWorld: {
+        description: "A minimal contract that writes to stdout.",
+        purpose: "Smoke-test the editor/deploy pipeline with a trivial contract.",
+    },
+    getRoll: {
+        description: "Read the membership roll.",
+        purpose: "List the registered voters.",
+    },
+    peekKudos: {
+        description: "Peek at the current kudos value.",
+        purpose: "Check the current kudos (trust) balance.",
+    },
+    awardKudos: {
+        description: "Award kudos to someone.",
+        purpose: "Give kudos (trust) to another member.",
+    },
+    claimWithInbox: {
+        description: "Set up your inbox through the member directory.",
+        purpose: "Register your inbox with the member directory.",
+    },
+    checkRegistration: {
+        description: "Check whether an address is on the voter roll.",
+        purpose: "Verify whether a member is registered to vote.",
+    },
+    lookupURI: {
+        description: "Look up the object registered at a URI.",
+        purpose: "Read the value stored in the registry under a URI.",
+    },
+    createURI: {
+        description: "Insert an arbitrary value into the registry and get its URI.",
+        purpose: "Publish a value to the registry and receive its URI.",
+    },
     doit: {
         description: "Generic capability call — invoke a method on a capability.",
+        purpose: "Call an arbitrary method on a capability (advanced escape hatch).",
         defaults: { type: "Group", capability: "admin", method: "register" },
     },
     towers: {
         description: "Towers of Hanoi recursion demo.",
+        purpose: "A classic recursive algorithm, useful for learning rholang.",
         defaults: { height: "3" },
     },
 };
