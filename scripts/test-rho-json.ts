@@ -2,7 +2,7 @@
 // formatting). Pure/deterministic — no devnet required.
 // Run with: npm run test:rho-json
 
-import { rhoExprToJson, formatRhoJson } from "../src/api/rho-json";
+import { rhoExprToJson, formatRhoJson, formatRhoResult } from "../src/api/rho-json";
 import type { RhoExpr } from "../src/api/types";
 
 let failures = 0;
@@ -60,6 +60,16 @@ check(pretty === '[\n  true,\n  "ok",\n  {\n    "x": 1\n  }\n]', "tuple pretty-p
 check(JSON.parse(pretty).length === 3, "formatted output is valid JSON");
 check(formatRhoJson(rhoExprToJson({ ExprInt: 42 })) === "42", "scalar pretty-prints as the bare value");
 check(formatRhoJson(null) === "null", "null -> \"null\"");
+
+// formatRhoResult — the exact "Output" window formatting for a deploy/explore result
+check(formatRhoResult(null) === null, "formatRhoResult(null) -> null");
+check(formatRhoResult(undefined) === null, "formatRhoResult(undefined) -> null");
+check(formatRhoResult([]) === "[]", "formatRhoResult([]) -> []");
+check(formatRhoResult([{ ExprInt: 42 }]) === "[\n  42\n]", "formatRhoResult([ExprInt 42]) -> [42]");
+check(
+    formatRhoResult([{ ExprTuple: [{ ExprBool: true }, { ExprString: "done" }] }]) === '[\n  [\n    true,\n    "done"\n  ]\n]',
+    "formatRhoResult([tuple]) -> nested JSON"
+);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

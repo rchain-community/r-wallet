@@ -151,7 +151,8 @@ deploys), so pending deploys are re-discovered across sessions/devices.
 
 ```bash
 npm run test:unit       # pure unit tests — no devnet required
-npm run test:rho-json   # rhoExprToJson + formatRhoJson
+npm run test:rho-json   # rhoExprToJson + formatRhoJson (incl. the Output-window formatter)
+npm run test:deploy     # deploy result-shapes + Output-window JSON (devnet)
 npm run test:api        # integration test against a running devnet
 ```
 

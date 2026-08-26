@@ -40,3 +40,9 @@ export function rhoExprToJson(expr: RhoExpr | null | undefined): RhoJsonValue {
 export function formatRhoJson(value: unknown): string {
     return JSON.stringify(value, null, 2) ?? "null";
 }
+
+// Format a deploy/explore result (a list of RhoExpr) into the pretty JSON shown
+// in the editor's "Output" window. Returns null when there is no result.
+export function formatRhoResult(exprs: RhoExpr[] | null | undefined): string | null {
+    return exprs ? formatRhoJson(exprs.map(rhoExprToJson)) : null;
+}

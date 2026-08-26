@@ -47,6 +47,7 @@
     "build": "tsc && vite build",
     "serve": "vite preview",
     "test:api": "tsx scripts/test-api.ts",
+    "test:deploy": "tsx scripts/test-deploy.ts",
     "test:rho-json": "tsx scripts/test-rho-json.ts",
     "test:unit": "tsx scripts/test-unit.ts"
   },

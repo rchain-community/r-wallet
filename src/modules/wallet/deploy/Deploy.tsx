@@ -4,7 +4,7 @@ import { useNodes, useLayout } from "Context";
 import * as Components from "components";
 import * as u from 'utils';
 import Editor, { loader, type EditorProps } from "@monaco-editor/react";
-import { rhoExprToJson, formatRhoJson } from "api";
+import { formatRhoResult } from "api";
 import { BRAND } from "../../../config/branding";
 import { snippets, snippet_apply, snippet_meta, common_field_help, common_field_defaults, Snippet } from "./snippets";
 
@@ -133,7 +133,7 @@ export function Deploy() {
     }
 
     set_err(res?.error);
-    set_msg(res?.expr ? formatRhoJson(res?.expr.map(rhoExprToJson)) : null);
+    set_msg(formatRhoResult(res?.expr));
     set_cost(null);
     set_op(u.OPERATION.INITIAL);
   }
@@ -183,7 +183,7 @@ export function Deploy() {
     }
 
     set_err(res?.error);
-    set_msg(res?.expr ? formatRhoJson(res?.expr.map(rhoExprToJson)) : null);
+    set_msg(formatRhoResult(res?.expr));
     set_op(u.OPERATION.INITIAL);
   }
 
