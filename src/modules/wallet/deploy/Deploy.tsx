@@ -133,7 +133,7 @@ export function Deploy() {
     }
 
     set_err(res?.error);
-    set_msg(res?.deployId ? `Deploy submitted: ${res.deployId}` : null);
+    set_msg(res?.expr ? formatRhoJson(res?.expr.map(rhoExprToJson)) : null);
     set_cost(null);
     set_op(u.OPERATION.INITIAL);
   }

@@ -9,6 +9,7 @@ import * as rho from './rho';
 import { add_tx } from './transactions';
 import {
     deploy as apiDeploy,
+    deployStatus,
     exploreDeploy,
     getStatus,
     propose as apiPropose,
@@ -117,7 +118,7 @@ export async function deploy(
         ({ deployId } = await sendDeploy(node_url, wallet, code, phlo_limit));
     } catch (err) {
         console.log("Error", err);
-        return { deployId: null, error: u.error_string(err) };
+        return { deployId: null, expr: null, error: u.error_string(err) };
     }
 
     add_tx({
@@ -128,7 +129,26 @@ export async function deploy(
         status: "pending",
     });
 
-    return { deployId, error: null };
+    // Poll deploy-status to a terminal state and surface the deploy's returned result so the
+    // Deploy "Output" box can show the JSON (mirrors the faucet submit-and-track loop).
+    for (let i = 0; i < 60; i++) {
+        let st;
+        try {
+            st = await deployStatus(node_url, deployId);
+        } catch (err) {
+            return { deployId, expr: null, error: u.error_string(err) };
+        }
+
+        if ("ProcessedWithSuccess" in st) {
+            return { deployId, expr: st.ProcessedWithSuccess.deployResult, error: null };
+        }
+        if ("ProcessedWithError" in st) {
+            return { deployId, expr: null, error: st.ProcessedWithError.deployError };
+        }
+        await new Promise(r => setTimeout(r, 3000));
+    }
+
+    return { deployId, expr: null, error: "Timed out waiting for deploy result." };
 }
 
 export async function explore(
