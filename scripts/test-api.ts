@@ -98,6 +98,11 @@ async function main() {
     const block = await getBlock(HTTP, simple.block.blockHash);
     check(!!block.blockInfo, "getBlock returns blockInfo");
     check(Array.isArray(block.deploys), "getBlock returns deploys array");
+    // New block format: the node exposes the block header's informational timestamp.
+    check(
+        typeof block.blockInfo.timestamp === "number",
+        `getBlock returns blockInfo.timestamp = ${block.blockInfo.timestamp}`,
+    );
 
     // 8. propose (admin; on an autoproposing devnet this is redundant and may
     //    race with autopropose -> "another propose is in progress", which is harmless)

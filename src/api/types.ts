@@ -56,6 +56,10 @@ export interface LightBlockInfo {
     blockSize?: string;
     deployCount?: number;
     rejectedDeploys?: string[];
+    // New block format: the proposer's informational wall-clock timestamp (ms since the Unix
+    // epoch), added to the block header and exposed by the node's LightBlockInfo. It is not a
+    // consensus input. Optional so older nodes (which omit it) still type-check.
+    timestamp?: number;
 }
 
 export interface DeployInfo {
