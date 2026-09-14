@@ -927,6 +927,18 @@ export const snippets = {
             set_field("arg")
         ]
     },
+    attachmentEcho: {
+        code:
+            "[] => {\n" +
+            "  new\n" +
+            "  out(`rho:io:stdout`),\n" +
+            "  a(`rho:attachment:1`)\n" +
+            "  in {\n" +
+            "    out!(*a)\n" +
+            "  }\n" +
+            "}",
+        fields: []
+    },
     towers: {
         code:
             "[height] => {\n" +
@@ -1150,6 +1162,10 @@ export const snippet_meta: Record<keyof typeof snippets, SnippetMeta> = {
         description: "Generic capability call — invoke a method on a capability.",
         purpose: "Call an arbitrary method on a capability (advanced escape hatch).",
         defaults: { type: "Group", capability: "admin", method: "register" },
+    },
+    attachmentEcho: {
+        description: "Echo the deploy's first binary attachment to stdout (RCHIP #39).",
+        purpose: "Verify attachment uploads: attach a file with the ATTACHMENTS control, DEPLOY, and read the bytes back.",
     },
     towers: {
         description: "Towers of Hanoi recursion demo.",

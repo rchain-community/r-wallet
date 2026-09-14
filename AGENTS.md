@@ -24,11 +24,11 @@ npm run test:api     # tsx scripts/test-api.ts — integration test vs a running
 npm run serve        # vite preview
 ```
 
-The local devnet lives in **`~/RNodeRust`** (a separate repo, worked on by
-another agent):
+The local devnet lives in **`~/rchain-rust`** (the node repo,
+[`rchain-community/rchain-rust`](https://github.com/rchain-community/rchain-rust)):
 
 ```bash
-cd ~/RNodeRust && tools/devnet.sh build && tools/devnet.sh up --validators 1
+cd ~/rchain-rust && tools/devnet.sh build && tools/devnet.sh up --validators 1
 # public HTTP 40403, admin HTTP 40405
 ```
 
@@ -67,16 +67,25 @@ One convention in `client.ts`: `httpFetch(METHOD, path, body?) → ensureOk → 
 | `faucetRequest` | `POST /api/faucet` |
 | `getCapabilities` | `GET /api/v1/capabilities` |
 | `getPooledDeploys` | `GET /api/v1/deploys` |
+| `getShards` | `GET /api/v1/shards` |
+| `runTxn` | `POST /api/v1/txn` (gateway only; 404 otherwise) |
+| `getTxn` | `GET /api/v1/txn/:txnId` (gateway only) |
+| `getTxnList` | `GET /api/v1/txn` (gateway only) |
 
 Wire facts: serde enums are **externally tagged** (`{"ExprInt":42}`,
 `{"UnforgDeploy":"<hex>"}`); `deploy`/`propose` return **JSON-encoded strings**;
 `DeployExecStatus` is `{ProcessedWithSuccess|ProcessedWithError|NotProcessed}`.
+`DeployData.attachments` (RCHIP #39) are **hex strings** and are **part of the
+signed protobuf** (field 12) — omit the field for an ordinary deploy.
 
 ## Rules / gotchas (non-negotiable)
 
 1. **`shardId` in the signature** — `src/api/sign.ts` must write `DeployData`
    protobuf field **11** (`shardId`), else every deploy is rejected with
-   `"Deploy signature is invalid."`.
+   `"Deploy signature is invalid."`. The *value* must be the node's own full shard
+   id (e.g. `/root`): `src/utils/rnode.ts` reads it from `/api/status` instead of
+   hardcoding a bare name (a mismatch is rejected with
+   `"Deploy shardId '…' is not as expected network shard '…'."`).
 2. **Native `revVault`, not Scala** — the node's `rho:rchain:revVault` only has
    `getBalance` / `transfer` (derives `from` from `*deployerId`) / `findOrCreate`.
    Do **not** reintroduce Scala-era `findOrCreate(addr)` / `balance` /
@@ -107,8 +116,12 @@ Wire facts: serde enums are **externally tagged** (`{"ExprInt":42}`,
 10. **Help** — a global **help mode** (LayoutContext) reveals inline hints;
     helper modals (`SnippetExplainModal`, `DeployHelpModal`) explain a snippet or
     the deploy operations. Keep explanation copy in the modal/hint, not inline.
+11. **Deploy attachments (RCHIP #39)** — `DeployData.attachments` are **hex
+    strings**, signed as protobuf field **12** (`src/api/sign.ts`) and exposed to
+    rholang as `rho:attachment:1`, `rho:attachment:2`, … Omitting the field when
+    empty keeps pre-#39 signatures and deploy ids byte-identical.
 
-## Known node-side issues (out of scope here, in `~/RNodeRust`)
+## Known node-side issues (out of scope here, in `~/rchain-rust`)
 
 - `explore-deploy` OpenAPI doc-vs-handler discrepancy (`explore-deploy` body is a raw
   string, not `ExploreDeployRequest`).

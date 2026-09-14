@@ -33,6 +33,13 @@ export interface ApiStatus {
     nodes: number;
     minPhloPrice: number;
     latestBlockNumber: number;
+    // Capability flags. `/api/status` reports the same flags as
+    // `GET /api/v1/capabilities`; see `NodeCapabilities` below.
+    autopropose: boolean;
+    proposeOnDeploy: boolean;
+    manualPropose: boolean;
+    adminHttp: boolean;
+    devMode: boolean;
 }
 
 export interface BondInfo {
@@ -41,25 +48,25 @@ export interface BondInfo {
 }
 
 export interface LightBlockInfo {
-    version?: number;
-    shardId?: string;
+    version: number;
+    shardId: string;
     blockHash: string;
     blockNumber: number;
     sender: string;
     seqNum: number;
-    preStateHash?: string;
-    postStateHash?: string;
-    justifications?: string[];
-    bonds?: BondInfo[];
-    sigAlgorithm?: string;
-    sig?: string;
-    blockSize?: string;
-    deployCount?: number;
-    rejectedDeploys?: string[];
-    // New block format: the proposer's informational wall-clock timestamp (ms since the Unix
-    // epoch), added to the block header and exposed by the node's LightBlockInfo. It is not a
-    // consensus input. Optional so older nodes (which omit it) still type-check.
-    timestamp?: number;
+    preStateHash: string;
+    postStateHash: string;
+    justifications: string[];
+    bonds: BondInfo[];
+    sigAlgorithm: string;
+    sig: string;
+    blockSize: string;
+    deployCount: number;
+    rejectedDeploys: string[];
+    // The proposer's informational wall-clock timestamp (ms since the Unix epoch), part of the
+    // block header (so hash-covered) but not a consensus input. Exposed by the node's
+    // `LightBlockInfo` and via `rho:block:data`.
+    timestamp: number;
 }
 
 export interface DeployInfo {
@@ -88,6 +95,10 @@ export interface DeployData {
     phloLimit: number;
     validAfterBlockNumber: number;
     shardId: string;
+    // Binary attachments (RCHIP #39), hex strings in order. Part of the *signed* deploy data and
+    // exposed to rholang as `rho:attachment:1`, `rho:attachment:2`, … (1-based) → ByteArray.
+    // Omitted for an ordinary deploy (whose bytes, signature and deploy id are unchanged).
+    attachments?: string[];
 }
 
 export interface DeployRequest {
@@ -162,3 +173,57 @@ export type TransferResult = { deployId: string | null; error: string | null };
 export type ExploreResult = { expr: RhoExpr[] | null; error: string | null };
 export type ProposeResult = { expr: string | null; error: string | null };
 export type FaucetResult = { deployId: string };
+
+// --- Shards (`GET /api/v1/shards`) ---
+
+export interface ShardInfo {
+    shardId: string;
+    primary: boolean;
+    latestBlockNumber: number;
+}
+
+export interface ShardsResponse {
+    primaryShard: string;
+    shardCount: number;
+    shards: ShardInfo[];
+}
+
+// --- Cross-shard transactions (`/api/v1/txn`; gateway + `--enable-txn-api` only) ---
+
+export type TxnState = "proposed" | "prepared" | "committed" | "aborted";
+
+export interface TxnLeg {
+    shardId: string;
+    // Amount in drops.
+    amount: number;
+    to: string;
+}
+
+export interface TxnVote {
+    shardId: string;
+    vote: string;
+}
+
+// One leg of a transaction: which shard escrows, how much REV, and where a commit credits it.
+export interface TxnRequest {
+    // Caller-supplied hex (non-empty, ≤ 64 bytes). A retried request must reuse the same id.
+    txnId: string;
+    legs: TxnLeg[];
+}
+
+// The coordinator's durable record, as reported by POST/GET /api/v1/txn.
+export interface TxnRecord {
+    txnId: string;
+    state: string;
+    // The coordinator key the participants gate commit/abort on (base16).
+    coordinator: string;
+    // The record's content address (base16).
+    recordHash: string;
+    legs: TxnLeg[];
+    votes: TxnVote[];
+    reason: string | null;
+}
+
+export interface TxnListResponse {
+    inFlight: TxnRecord[];
+}

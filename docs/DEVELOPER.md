@@ -27,7 +27,7 @@ Supporting modules:
 | Path | Purpose |
 |---|---|
 | `src/api/types.ts` | **Single source of truth** for wire DTOs + domain result types |
-| `src/api/sign.ts` | secp256k1 deploy signing (incl. the `shardId` field-11 fix) |
+| `src/api/sign.ts` | secp256k1 deploy signing (incl. the `shardId` field-11 fix and RCHIP #39 `attachments` field 12) |
 | `src/api/rho-json.ts` | `rhoExprToJson`: externally-tagged `RhoExpr` → plain JSON |
 | `src/api/faucet.ts` | devnet faucet (native endpoint + `deploy-status` poll) |
 | `src/utils/rho.ts` | rholang templates (`fn_check_balance`, `fn_transfer_funds`) |
@@ -49,7 +49,8 @@ npm install
 npm start            # Vite dev server on http://localhost:5173
 ```
 
-To run against a local node (from `~/RNodeRust`):
+To run against a local node (from `~/rchain-rust`, the
+[`rchain-community/rchain-rust`](https://github.com/rchain-community/rchain-rust) repo):
 
 ```bash
 tools/devnet.sh build
@@ -82,6 +83,13 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 | `faucetRequest(base, address)` | `POST /api/faucet` | `{ address }` | `FaucetResponse { deployId, amount, to }` |
 | `getCapabilities(base)` | `GET /api/v1/capabilities` | — | `NodeCapabilities { autopropose, proposeOnDeploy, manualPropose, adminHttp, devMode, faucet }` |
 | `getPooledDeploys(base)` | `GET /api/v1/deploys` | — | `PooledDeploys { deploys: [PooledDeploy] }` |
+| `getShards(base)` | `GET /api/v1/shards` | — | `ShardsResponse { primaryShard, shardCount, shards: [ShardInfo] }` |
+| `runTxn(base, req)` | `POST /api/v1/txn` | `{ txnId, legs: [{ shardId, amount, to }] }` | `TxnRecord` (gateway only; 404 otherwise) |
+| `getTxn(base, id)` | `GET /api/v1/txn/:txnId` | — | `TxnRecord`, or `null` on 404 |
+| `getTxnList(base)` | `GET /api/v1/txn` | — | `TxnListResponse { inFlight: [TxnRecord] }` |
+
+`ApiStatus` also carries the same capability flags (`autopropose`,
+`proposeOnDeploy`, `manualPropose`, `adminHttp`, `devMode`) as `/api/v1/capabilities`.
 
 ### Wire facts (don't deviate)
 
@@ -92,6 +100,8 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 - `DeployExecStatus` is externally tagged:
   `{ProcessedWithSuccess:{deployResult,block}}`,
   `{ProcessedWithError:{deployError,block}}`, `{NotProcessed:{status}}`.
+- `LightBlockInfo` / `DeployInfo` / `PooledDeploy` field names are the node's
+  camelCase DTOs; `LightBlockInfo` (incl. `timestamp`) is always fully populated.
 
 ### Deploy signing
 
@@ -106,9 +116,18 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 | phloLimit | 8 |
 | validAfterBlockNumber | 10 |
 | **shardId** | **11** |
+| **attachments** (repeated bytes, hex in JSON) | **12** |
 
 `shardId` **must** be written (field 11) or the node rejects the deploy with
-`"Deploy signature is invalid."`.
+`"Deploy signature is invalid."`. Its **value** must be the node's full shard id
+(`/root` for the default shard), so `src/utils/rnode.ts` reads it from
+`/api/status` instead of hardcoding it — a mismatch is rejected with
+`"Deploy shardId '…' is not as expected network shard '…'."`.
+
+**Attachments (RCHIP #39)** are hex strings (strict `base16`: even length, no
+`0x`), signed as field 12. Each is readable in the deploy as
+`` `rho:attachment:1` ``, `` `rho:attachment:2` ``, … in order (a `ByteArray`). An
+empty list is omitted entirely, so a pre-#39 deploy encodes byte-identically.
 
 ---
 
@@ -157,15 +176,16 @@ npm run test:api        # integration test against a running devnet
 ```
 
 **Unit tests** (`scripts/test-unit.ts`) import the real modules and cover, without a
-devnet: deploy signing (`signDeploy` + the `shardId` field-11 serialization), REV address
-derivation, the native `revVault` rholang templates, snippet generation + `snippet_meta`
-completeness, `client` response parsing (stubbed `fetch`), and `transactions`
-`add_tx`/pooled-deploys reconciliation.
+devnet: deploy signing (`signDeploy` + the `shardId` field-11 serialization + RCHIP #39
+`attachments` field-12 serialization, including the tamper/changed-signature check), REV
+address derivation, the native `revVault` rholang templates, snippet generation +
+`snippet_meta` completeness, `client` response parsing (stubbed `fetch`, incl. shards and
+the tx DTOs), and `transactions` `add_tx`/pooled-deploys reconciliation.
 
 **Integration test** (`scripts/test-api.ts`) asserts every `client.*` endpoint's shape and,
-end-to-end against the devnet, exercises `check_balance`, `deploy` (+ `deploy-status`),
-`transfer`, `propose`, `faucet`, the `rnode` seam, capabilities, pooled deploys, and
-transaction reconciliation.
+end-to-end against the devnet, exercises `check_balance`, `deploy` (+ `deploy-status` and a
+binary-attachment round-trip), `transfer`, `propose`, `faucet`, the `rnode` seam,
+capabilities, pooled deploys, shards, the tx list, and transaction reconciliation.
 
 All tests run under Node via `tsx` (not Vite), so the API modules must be Node-ESM
 compatible (see the interop note below).

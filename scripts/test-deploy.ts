@@ -22,7 +22,7 @@ function check(cond: boolean, label: string) {
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-async function deployTerm(term: string): Promise<RhoExpr[]> {
+async function deployTerm(term: string, attachments?: string[]): Promise<RhoExpr[]> {
     const status = await getStatus(HTTP);
     const deployData: DeployData = {
         term,
@@ -30,8 +30,10 @@ async function deployTerm(term: string): Promise<RhoExpr[]> {
         phloPrice: Math.max(1, status.minPhloPrice),
         phloLimit: 500000,
         validAfterBlockNumber: status.latestBlockNumber,
-        shardId: "root",
+        // The node's own full shard id (e.g. `/root`), not a hardcoded bare name.
+        shardId: status.shardId,
     };
+    if (attachments && attachments.length > 0) deployData.attachments = attachments;
     const signed = signDeploy(deployData, DEPLOYER_PRIV);
     const deployId = await deploy(HTTP, signed);
 
@@ -60,6 +62,16 @@ async function main() {
     // Map result
     const mapExpr = await deployTerm('new deployId(`rho:rchain:deployId`) in { deployId!({"a": 1}) }');
     check(formatRhoResult(mapExpr) === '[\n  {\n    "a": 1\n  }\n]', "deploy Map -> Output JSON");
+
+    // Binary attachment (RCHIP #39): readable as `rho:attachment:1`, returned as a ByteArray (hex).
+    const attachExpr = await deployTerm(
+        'new deployId(`rho:rchain:deployId`), a(`rho:attachment:1`) in { deployId!(*a) }',
+        ["deadbeef"]
+    );
+    check(
+        formatRhoResult(attachExpr) === '[\n  "deadbeef"\n]',
+        `deploy attachment -> Output JSON (${formatRhoResult(attachExpr)?.replace(/\n/g, "\\n")})`
+    );
 
     console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
     process.exit(failures === 0 ? 0 : 1);

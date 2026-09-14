@@ -3,8 +3,8 @@
 
 import elliptic from "elliptic";
 import blake from "blakejs";
-import { deployDataProtobufSerialize, signDeploy } from "../src/api/sign";
-import { deploy, propose } from "../src/api/client";
+import { deployDataProtobufSerialize, signDeploy, decodeBase16 } from "../src/api/sign";
+import { deploy, propose, getShards, runTxn, getTxn, getTxnList } from "../src/api/client";
 import * as bc from "../src/utils/blockchain";
 import * as rho from "../src/utils/rho";
 import { snippets, snippet_apply, snippet_meta } from "../src/modules/wallet/deploy/snippets";
@@ -31,12 +31,12 @@ async function main() {
         phloPrice: 1,
         phloLimit: 1000000,
         validAfterBlockNumber: 0,
-        shardId: "root",
+        shardId: "/root",
     };
     const signed = signDeploy(dd, DEPLOYER_PRIV);
 
     check(signed.sigAlgorithm === "secp256k1", "sigAlgorithm is secp256k1");
-    check(signed.data.shardId === "root", "DeployRequest body carries shardId");
+    check(signed.data.shardId === "/root", "DeployRequest body carries shardId");
     check(/^04[0-9a-f]{128}$/.test(signed.deployer), "deployer is a 65-byte uncompressed pubkey");
     check(/^30[0-9a-f]+$/.test(signed.signature), "signature is a DER hex string");
 
@@ -49,6 +49,45 @@ async function main() {
     // The critical shardId fix: field 11 must be written (tag byte 0x5a).
     const serialized = Array.from(deployDataProtobufSerialize(dd));
     check(serialized.includes(0x5a), "protobuf serialization writes field 11 (shardId)");
+
+    // 1b. RCHIP #39 binary attachments — field 12, part of the signed payload.
+    const without = Array.from(deployDataProtobufSerialize(dd));
+    const withOne = Array.from(deployDataProtobufSerialize({ ...dd, attachments: ["deadbeef"] }));
+    check(withOne.includes(0x62), "protobuf serialization writes field 12 (attachments)");
+    check(withOne.length === without.length + 6, "one 4-byte attachment adds 6 bytes (tag+len+4)");
+    check(!without.includes(0x62), "a deploy with no attachments writes no field 12");
+
+    const signedAttached = signDeploy({ ...dd, attachments: ["deadbeef"] }, DEPLOYER_PRIV);
+    check(
+        Array.isArray(signedAttached.data.attachments) && signedAttached.data.attachments[0] === "deadbeef",
+        "DeployRequest body carries attachments"
+    );
+    const attachedKey = ec.keyFromPublic(signedAttached.deployer, "hex");
+    const attachedHash = blake.blake2bHex(
+        deployDataProtobufSerialize({ ...dd, attachments: ["deadbeef"] }),
+        undefined,
+        32
+    );
+    check(attachedKey.verify(attachedHash, signedAttached.signature), "attachment deploy signature verifies");
+    const tamperedHash = blake.blake2bHex(
+        deployDataProtobufSerialize({ ...dd, attachments: ["cafebabe"] }),
+        undefined,
+        32
+    );
+    check(
+        !attachedKey.verify(tamperedHash, signedAttached.signature),
+        "a tampered/stripped attachment fails signature verification"
+    );
+
+    // Strict hex, mirroring the node's base16::decode.
+    check(decodeBase16("00ff")[1] === 0xff, "decodeBase16 decodes hex");
+    check(decodeBase16("").length === 0, "decodeBase16 accepts empty (an empty attachment)");
+    let badHex = false;
+    try { decodeBase16("xyz"); } catch { badHex = true; }
+    check(badHex, "decodeBase16 rejects non-hex");
+    let oddHex = false;
+    try { decodeBase16("abc"); } catch { oddHex = true; }
+    check(oddHex, "decodeBase16 rejects odd-length hex");
 
     // 2. address derivation
     const acct = await bc.get_account_from_private_key(DEPLOYER_PRIV);
@@ -96,6 +135,52 @@ async function main() {
 
         globalThis.fetch = (async () => new Response(JSON.stringify("Success! Block abc created and added."), { status: 200 })) as typeof fetch;
         check((await propose("http://x")).includes("Block abc created"), "propose returns the plain string");
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+
+    // 5b. shards + cross-shard transaction DTOs (stubbed fetch)
+    const txnRecord = {
+        txnId: "aabb",
+        state: "committed",
+        coordinator: "00",
+        recordHash: "11",
+        legs: [{ shardId: "/root", amount: 30, to: "dest" }],
+        votes: [{ shardId: "/root", vote: "ready" }],
+        reason: null,
+    };
+    try {
+        globalThis.fetch = (async (url, opt) => {
+            const u = String(url);
+            if (u.includes("/api/v1/shards")) {
+                return new Response(JSON.stringify({
+                    primaryShard: "/root",
+                    shardCount: 1,
+                    shards: [{ shardId: "/root", primary: true, latestBlockNumber: 7 }],
+                }), { status: 200 });
+            }
+            if (u.includes("/api/v1/txn/")) {
+                return new Response(JSON.stringify(txnRecord), { status: 200 });
+            }
+            if (u.includes("/api/v1/txn")) {
+                const method = (opt as RequestInit | undefined)?.method;
+                const body = method === "GET" ? { inFlight: [txnRecord] } : txnRecord;
+                return new Response(JSON.stringify(body), { status: 200 });
+            }
+            return new Response("not found", { status: 404 });
+        }) as typeof fetch;
+
+        const shards = await getShards("http://x");
+        check(shards.primaryShard === "/root" && shards.shards[0].primary, "getShards parses the shards response");
+
+        const txn = await runTxn("http://x", { txnId: "aabb", legs: [{ shardId: "/root", amount: 30, to: "dest" }] });
+        check(txn.state === "committed" && txn.legs[0].amount === 30, "runTxn parses a TxnRecord");
+
+        const list = await getTxnList("http://x");
+        check(list.inFlight.length === 1, "getTxnList parses inFlight");
+
+        const one = await getTxn("http://x", "aabb");
+        check(one?.state === "committed", "getTxn parses a record");
     } finally {
         globalThis.fetch = originalFetch;
     }

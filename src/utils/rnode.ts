@@ -17,6 +17,7 @@ import {
 import { signDeploy } from '../api/sign';
 import type {
     BalanceResult,
+    DeployData,
     DeployRequest,
     DeployResult,
     ExploreResult,
@@ -34,14 +35,16 @@ async function sendDeploy(
     account: u.NamedWallet & { privKey?: string },
     code: string,
     phloLimit = 500000,
-    shardId = "root"
+    attachments: string[] = []
 ): Promise<SignedDeploy> {
     if (!account.privKey) {
         throw new Error("Selected account doesn't have private key and cannot be used for signing.");
     }
 
-    const { latestBlockNumber, minPhloPrice } = await getStatus(url);
-    const deployData = {
+    // Take the shard id from the node (its full id, e.g. `/root`) rather than hardcoding a bare
+    // shard name: the node rejects a deploy whose `shardId` is not its own.
+    const { latestBlockNumber, minPhloPrice, shardId } = await getStatus(url);
+    const deployData: DeployData = {
         term: code,
         timestamp: Date.now(),
         phloPrice: Math.max(1, minPhloPrice),
@@ -49,6 +52,9 @@ async function sendDeploy(
         validAfterBlockNumber: latestBlockNumber,
         shardId,
     };
+    if (attachments.length > 0) {
+        deployData.attachments = attachments;
+    }
 
     const signed = signDeploy(deployData, account.privKey);
     const deployId = await apiDeploy(url, signed);
@@ -109,13 +115,14 @@ export async function deploy(
     node_url: string,
     wallet: u.NamedWallet,
     code: string,
-    phlo_limit: number
+    phlo_limit: number,
+    attachments: string[] = []
 ): Promise<DeployResult> {
     u.wallet_normalize(wallet);
 
     let deployId: string;
     try {
-        ({ deployId } = await sendDeploy(node_url, wallet, code, phlo_limit));
+        ({ deployId } = await sendDeploy(node_url, wallet, code, phlo_limit, attachments));
     } catch (err) {
         console.log("Error", err);
         return { deployId: null, expr: null, error: u.error_string(err) };
@@ -124,7 +131,9 @@ export async function deploy(
     add_tx({
         deployId,
         kind: "deploy",
-        description: "Deploy rholang",
+        description: attachments.length > 0
+            ? `Deploy rholang (+${attachments.length} attachment${attachments.length === 1 ? "" : "s"})`
+            : "Deploy rholang",
         timestamp: Date.now(),
         status: "pending",
     });
