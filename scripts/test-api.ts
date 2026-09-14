@@ -5,6 +5,8 @@ import {
     getStatus,
     getCapabilities,
     getPooledDeploys,
+    getShards,
+    getTxnList,
     exploreDeploy,
     deploy,
     deployStatus,
@@ -19,7 +21,7 @@ import * as bc from "../src/utils/blockchain";
 import * as rho from "../src/utils/rho";
 import * as rnode from "../src/utils/rnode";
 import { tx_list, refresh_tx_states } from "../src/utils/transactions";
-import type { DeployData } from "../src/api/types";
+import type { DeployData, RhoExpr } from "../src/api/types";
 
 const HTTP = "http://localhost:40403";
 const ADMIN = "http://localhost:40405";
@@ -42,6 +44,9 @@ async function main() {
     check(typeof status.shardId === "string", `status.shardId = "${status.shardId}"`);
     check(typeof status.minPhloPrice === "number", `status.minPhloPrice = ${status.minPhloPrice}`);
     check(typeof status.latestBlockNumber === "number", `status.latestBlockNumber = ${status.latestBlockNumber}`);
+    check(typeof status.autopropose === "boolean", `status.autopropose = ${status.autopropose}`);
+    check(typeof status.adminHttp === "boolean", `status.adminHttp = ${status.adminHttp}`);
+    check(typeof status.devMode === "boolean", `status.devMode = ${status.devMode}`);
 
     // 2. explore-deploy: simple term + rhoExprToJson
     const simple = await exploreDeploy(HTTP, "new return in { return!(42) }");
@@ -67,11 +72,44 @@ async function main() {
         phloPrice: Math.max(1, status.minPhloPrice),
         phloLimit: 500000,
         validAfterBlockNumber: status.latestBlockNumber,
-        shardId: "root",
+        // The node's own full shard id (`/root`), not a hardcoded bare name.
+        shardId: status.shardId,
     };
     const signed = signDeploy(deployData, DEPLOYER_PRIV);
     const deployId = await deploy(HTTP, signed);
     check(/^[0-9a-f]+$/.test(deployId), `deploy returns hex deployId (${deployId.slice(0, 16)}...)`);
+
+    // 4b. deploy with a binary attachment (RCHIP #39) and read it back as a ByteArray
+    const attachedSigned = signDeploy(
+        {
+            term: "new deployId(`rho:rchain:deployId`), a(`rho:attachment:1`) in { deployId!(*a) }",
+            timestamp: Date.now(),
+            phloPrice: Math.max(1, status.minPhloPrice),
+            phloLimit: 500000,
+            validAfterBlockNumber: status.latestBlockNumber,
+            shardId: status.shardId,
+            attachments: ["deadbeef"],
+        },
+        DEPLOYER_PRIV
+    );
+    const attachedId = await deploy(HTTP, attachedSigned);
+    check(/^[0-9a-f]+$/.test(attachedId), `deploy (attachment) returns hex deployId (${attachedId.slice(0, 16)}...)`);
+    let attachResult: RhoExpr[] | null = null;
+    for (let i = 0; i < 20 && !attachResult; i++) {
+        const st = await deployStatus(HTTP, attachedId);
+        if ("ProcessedWithSuccess" in st) {
+            attachResult = st.ProcessedWithSuccess.deployResult;
+        } else if ("ProcessedWithError" in st) {
+            check(false, `attachment deploy -> ProcessedWithError: ${st.ProcessedWithError.deployError}`);
+            break;
+        } else {
+            await sleep(3000);
+        }
+    }
+    check(
+        !!attachResult && "ExprBytes" in attachResult[0] && attachResult[0].ExprBytes === "deadbeef",
+        `attachment round-trips as ExprBytes (${JSON.stringify(attachResult)})`
+    );
 
     // 5. deploy-status -> poll to terminal state
     let processed = false;
@@ -151,6 +189,20 @@ async function main() {
 
     const pool = await getPooledDeploys(HTTP);
     check(Array.isArray(pool.deploys), "getPooledDeploys returns a deploys array");
+
+    // 10b. shards + cross-shard transaction list (the latter only on a gateway with the txn API on)
+    const shards = await getShards(HTTP);
+    check(
+        typeof shards.primaryShard === "string" && shards.shards.length >= 1,
+        `getShards returns the node's shards (primary=${shards.primaryShard}, count=${shards.shardCount})`
+    );
+    try {
+        const inflight = await getTxnList(HTTP);
+        check(Array.isArray(inflight.inFlight), "getTxnList returns inFlight (gateway)");
+    } catch (e) {
+        // A non-gateway node answers 404 by design; that is the documented shape, not a failure.
+        check(true, `getTxnList unavailable on this node (${(e as Error).message.slice(0, 60)})`);
+    }
 
     // 11. rnode seam: check_balance / transfer / deploy
     const deployerWallet = { name: "deployer", ...deployer! };

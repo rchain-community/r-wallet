@@ -14,6 +14,10 @@ import type {
     PooledDeploys,
     RhoDataResponse,
     RhoUnforg,
+    ShardsResponse,
+    TxnListResponse,
+    TxnRecord,
+    TxnRequest,
 } from "./types";
 
 const api = (base: string, path: string) => `${base.replace(/\/$/, "")}/api/${path}`;
@@ -89,4 +93,35 @@ export async function getPooledDeploys(url: string): Promise<PooledDeploys> {
     const res = await httpFetch("GET", api(url, "v1/deploys"));
     ensureOk(res);
     return res.json as PooledDeploys;
+}
+
+// `GET /api/v1/shards` — the shards this node is a member of (primary first). A client that needs
+// to address a specific shard reads the ids here; a deploy names its shard in `DeployData.shardId`.
+export async function getShards(url: string): Promise<ShardsResponse> {
+    const res = await httpFetch("GET", api(url, "v1/shards"));
+    ensureOk(res);
+    return res.json as ShardsResponse;
+}
+
+// `POST /api/v1/txn` — open (or resume) a cross-shard transaction and drive it to a terminal state.
+// Only a gateway node with the txn API enabled answers; others return 404 (surfaced as an error).
+export async function runTxn(url: string, request: TxnRequest): Promise<TxnRecord> {
+    const res = await httpFetch("POST", api(url, "v1/txn"), JSON.stringify(request));
+    ensureOk(res);
+    return res.json as TxnRecord;
+}
+
+// `GET /api/v1/txn/:txnId` — the durable record of a transaction, or null when this node has none.
+export async function getTxn(url: string, txnId: string): Promise<TxnRecord | null> {
+    const res = await httpFetch("GET", api(url, `v1/txn/${txnId}`));
+    if (res.status === 404) return null;
+    ensureOk(res);
+    return res.json as TxnRecord;
+}
+
+// `GET /api/v1/txn` — the transactions this node is still coordinating.
+export async function getTxnList(url: string): Promise<TxnListResponse> {
+    const res = await httpFetch("GET", api(url, "v1/txn"));
+    ensureOk(res);
+    return res.json as TxnListResponse;
 }

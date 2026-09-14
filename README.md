@@ -2,11 +2,13 @@
 
 **R Wallet** is a browser wallet for the RChain **REV** token and a
 **WYSIWYG rholang deployer**. It is a single-page app that talks directly to a
-[Rust RNode](https://github.com/rchain-community/RNodeRust)'s HTTP API — no gRPC,
+[Rust RNode](https://github.com/rchain-community/rchain-rust)'s HTTP API — no gRPC,
 no backend proxy.
 
 - **Write & deploy rholang visually** — a Monaco code editor with `EXPLORE`
   (read-only evaluation), `ADMIN DEPLOY` (on-chain), and `PROPOSE`.
+- **Binary attachments** — attach files to a deploy (RCHIP #39); they are signed
+  in and readable in rholang as `rho:attachment:1`, `rho:attachment:2`, …
 - **Contract templates** — a dropdown of governance/smart-contract templates with
   field auto-fill and an inline **EXPLAIN** panel (what each template and field does).
 - **REV wallet** — check balance, transfer REV, and access wallets via keystore
@@ -45,10 +47,10 @@ npm install
 npm start          # dev server at http://localhost:5173
 ```
 
-To use it against a real node, run a local devnet (from `~/RNodeRust`):
+To use it against a real node, run a local devnet (from `~/rchain-rust`):
 
 ```bash
-cd ~/RNodeRust
+cd ~/rchain-rust
 tools/devnet.sh build
 tools/devnet.sh up --validators 1   # public HTTP 40403, admin HTTP 40405
 ```

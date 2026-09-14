@@ -390,6 +390,25 @@ export async function read_json_file(file: File) {
 	});
 }
 
+// Read a File as lowercase hex with no `0x` prefix — the node's attachment encoding (RCHIP #39).
+export async function read_file_hex(file: File): Promise<string> {
+	return new Promise((resolve, reject) => {
+		let reader = new FileReader();
+		reader.onerror = reject;
+		reader.onload = () => {
+			let res = reader.result;
+			if (!(res instanceof ArrayBuffer)) {
+				reject(new Error("could not read file bytes"));
+				return;
+			}
+			let bytes = new Uint8Array(res);
+			let hex = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+			resolve(hex);
+		};
+		reader.readAsArrayBuffer(file);
+	});
+}
+
 export async function download_blob(blob_url: string, filename: string) {
 	let link = document.createElement("a");
 	link.style.display = "none";

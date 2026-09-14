@@ -88,6 +88,46 @@ function Snippet_Fields(
   </div>
 }
 
+interface Attachment {
+  name: string;
+  size: number;
+  hex: string;
+}
+
+function Attachments(props: {
+  items: Attachment[];
+  error: string | null;
+  on_add: (files: FileList | null) => void;
+  on_remove: (idx: number) => void;
+}) {
+  return <div className="flex flex-col gap-2">
+    <label title="ATTACHMENTS">
+      <input
+        type="file"
+        multiple
+        onChange={(e) => { props.on_add(e.target.files); e.target.value = ""; }}
+      />
+      <p className="text-sm opacity-70">
+        Attachments are signed into the deploy (RCHIP #39) and readable in rholang as
+        <code> rho:attachment:1</code>, <code>rho:attachment:2</code>, … in order.
+      </p>
+    </label>
+    {props.error && <p className="text-sm text-red-500">{props.error}</p>}
+    {props.items.length > 0 && (
+      <ul className="flex flex-col gap-1">
+        {props.items.map((a, i) => (
+          <li key={`${a.name}-${i}`} className="flex items-center gap-2 text-sm">
+            <span className="font-mono shrink-0">{`rho:attachment:${i + 1}`}</span>
+            <span className="flex-1 truncate" title={a.name}>{a.name}</span>
+            <span className="opacity-60 shrink-0">{a.size} B</span>
+            <Components.Button onClick={() => props.on_remove(i)}>REMOVE</Components.Button>
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>;
+}
+
 export function Deploy() {
   const node_context = useNodes();
   const layout = useLayout();
@@ -100,6 +140,8 @@ export function Deploy() {
   const [err,  set_err] = useState<string|null>();
   const [msg,  set_msg] = useState<string|null>();
   const [cost, set_cost] = useState<number|null>(null);
+  const [attachments, set_attachments] = useState<Attachment[]>([]);
+  const [attach_err, set_attach_err] = useState<string|null>(null);
   const [op, set_op] = useState(u.OPERATION.INITIAL);
   const theme = u.useTheme();
 
@@ -108,6 +150,24 @@ export function Deploy() {
 
   async function clear() {
     code.set("");
+  }
+
+  async function add_attachments(files: FileList | null) {
+    if (!files || files.length === 0) { return; }
+    set_attach_err(null);
+    try {
+      const added: Attachment[] = [];
+      for (const file of Array.from(files)) {
+        added.push({ name: file.name, size: file.size, hex: await u.read_file_hex(file) });
+      }
+      set_attachments(prev => [...prev, ...added]);
+    } catch (err) {
+      set_attach_err(u.error_string(err));
+    }
+  }
+
+  function remove_attachment(idx: number) {
+    set_attachments(prev => prev.filter((_, i) => i !== idx));
   }
 
   async function deploy() {
@@ -121,7 +181,8 @@ export function Deploy() {
     let res = await u.g.deploy_code(
       node_context,
       code.value,
-      phlo_limit.value
+      phlo_limit.value,
+      attachments.map(a => a.hex)
     );
 
     if (!res) {
@@ -277,7 +338,7 @@ export function Deploy() {
       <h2>Deploy Rholang Code</h2>
 
       {layout.help_mode && (
-        <p className="text-sm opacity-70">EXPLORE evaluates read-only and shows the result in the output window. DEPLOY signs and submits your rholang (track its status in Transactions). PROPOSE forces a block and only appears on a devnet.</p>
+        <p className="text-sm opacity-70">EXPLORE evaluates read-only and shows the result in the output window. DEPLOY signs and submits your rholang (track its status in Transactions). Attach files to pass binary data in as `rho:attachment:1`, `rho:attachment:2`, … PROPOSE forces a block and only appears on a devnet.</p>
       )}
 
       <div className="flex flex-col md:flex-row gap-4">
@@ -314,6 +375,13 @@ export function Deploy() {
             />
             <p>×10<sup>-8</sup> {BRAND.ticker}</p>
           </label>
+
+          <Attachments
+            items={attachments}
+            error={attach_err}
+            on_add={add_attachments}
+            on_remove={remove_attachment}
+          />
 
           <div className="flex justify-end items-center flex-wrap gap-2">
             <Components.Button className="mr-auto" onClick={clear}>

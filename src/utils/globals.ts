@@ -31,11 +31,12 @@ export async function transfer(
 export async function deploy_code(
 	ctx: NodeContext,
 	code: string,
-	phlo_limit: number
+	phlo_limit: number,
+	attachments: string[] = []
 ) {
 	if (!user) { return null; }
 	let url = ctx.get_validator_url();
-	return await (await rnode).deploy(url, user, code, phlo_limit);
+	return await (await rnode).deploy(url, user, code, phlo_limit, attachments);
 }
 
 export async function propose(
