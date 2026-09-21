@@ -151,10 +151,10 @@ function extract_uri(expr: unknown): string | null {
 }
 
 /**
- * `rho:registry:lookup` replies with the stored value alone, so consuming it is a plain
- * `lookup!(uri, *ch) | for (X <- ch) { X!(…) }` — no destructuring. The node's native handler
- * currently wraps the reply in `(uri, value)`, which the node-side fix (C18) removes; see
- * `spec/API-SCHEMA.md` in r-node for the standard this depends on.
+ * `rho:registry:lookup` replies with the stored value alone (fixed as C18 in r-node), so consuming
+ * it is a plain `lookup!(uri, *ch) | for (X <- ch) { X!(…) }` — no destructuring, and the upstream
+ * master-directory template is deployed verbatim. See `spec/API-SCHEMA.md` in r-node for the
+ * standard this depends on.
  */
 
 function load_manifest(): Record<string, string> {

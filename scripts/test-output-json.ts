@@ -335,7 +335,7 @@ async function check_process_api_schema(): Promise<void> {
     //    Oracle: the genesis `Registry.rho` contract, whose `lookup` forwards
     //    `TreeHashMap!("get", …)` (legacy/casper/src/main/resources/Registry.rho:397-401), with its
     //    recorded output at legacy/rholang/examples/tut-registry.rho:8,42-47.
-    //    `spec/AUDIT.md` C18 — this node wraps the reply in `(uri, value)`, so the value binds to a
+    //    `spec/AUDIT.md` C18 — a wrapper (`(uri, value)`) binds the pair to a name, making the send
     //    *name* and the send below is a silent no-op. Every oracle-era client is written this way.
     const schema_lookup =
         'new target, ins(`rho:registry:insertArbitrary`), look(`rho:registry:lookup`),\n' +
@@ -355,7 +355,7 @@ async function check_process_api_schema(): Promise<void> {
         /reached-target/.test(lookup.text),
         "schema: rho:registry:lookup replies with the stored value alone, so "
             + "`for (X <- ch) { X!(…) }` reaches the registered contract "
-            + "(node: spec/AUDIT.md C18 — reply is currently wrapped as (uri, value))"
+            + "(node: spec/AUDIT.md C18 — the reply must not be wrapped as (uri, value))"
     );
 
     // 2. `rho:block:data` replies with **three** values: `(blockNumber, sender, timestamp)`.
@@ -379,6 +379,26 @@ async function check_process_api_schema(): Promise<void> {
         "schema: rho:block:data replies with three values (blockNumber, sender, timestamp), "
             + "as documented and as the genesis vault consumes"
     );
+
+    // 3. A **partial map pattern** must match a dictionary with more entries than the pattern names.
+    //    This is the behaviour the entire governance family rests on: `MemberDirectory.rho:15` gates
+    //    its body on `@{"read": *MCAread, ..._}` against a three-key map, and every locker read in
+    //    the snippets is the same shape. Node-side defect C20: the remainder never absorbs a map
+    //    entry, so a pattern matches only when the map has exactly as many entries as the pattern —
+    //    the failure is silent, because an unmatched `for` is not an error. Asserted here because the
+    //    wallet's own correctness depends on it and nothing else pins it.
+    const schema_partial_map =
+        'new cap, deployId(`rho:rchain:deployId`), ch in {\n' +
+        '  ch!({"grant": cap, "read": cap, "write": cap}) |\n' +
+        '  for (@{"read": *m, ..._} <<- ch) { deployId!(["partial-map-3key", "matched"]) }\n' +
+        '}';
+    const partial_map = await run_bounded("schema:partial-map", schema_partial_map, "deploy");
+    check(
+        /partial-map-3key/.test(partial_map.text),
+        "schema: a partial map pattern matches a dictionary with extra keys "
+            + "(node: AUDIT.md C20 — the remainder never absorbs a map entry, which gates "
+            + "MemberDirectory.rho:15 and so the whole governance family)"
+    );
 }
 
 async function main() {
@@ -388,6 +408,14 @@ async function main() {
     const acct = await get_account_from_private_key(KEY);
     if (!acct) throw new Error("could not derive a wallet from the deploy key");
     console.log(`wallet:  ${acct.revAddr}\n`);
+
+    // Which account is funded differs by chain: the local devnet funds its validator/deployer at
+    // genesis, while the public testnet's funded accounts are the playground set. Point the balance
+    // case at whichever this node actually funds, so its golden is a real balance rather than `[0]`
+    // (which would assert nothing about the node's vault behavior).
+    if (IS_LOCAL) {
+        CASES.checkBalance.args = { myGovRevAddr: acct.revAddr };
+    }
 
     // No snippet may escape the sweep.
     const unclassified = (Object.keys(snippets) as Array<keyof typeof snippets>)
