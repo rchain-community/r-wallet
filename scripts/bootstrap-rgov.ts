@@ -20,6 +20,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { deploy as rnode_deploy } from "../src/utils/rnode";
@@ -44,7 +45,7 @@ const IS_LOCAL = /localhost|127\.0\.0\.1/.test(NODE);
 const KEY = arg("key")
     ?? process.env.RNODE_KEY
     ?? (IS_LOCAL ? DEVNET_DEPLOYER_KEY : PLAYGROUND_ACCOUNTS[0].privKey);
-const RGOV = arg("rgov") ?? "/tmp/rgov";
+let rgov_dir = arg("rgov") ?? "/tmp/rgov";
 
 const HOST = NODE.replace(/^https?:\/\//, "").replace(/[^a-zA-Z0-9.-]/g, "_");
 const MANIFEST = path.join(HEREDIR, `rgov-bootstrap.${HOST}.json`);
@@ -82,9 +83,34 @@ const STEPS: Step[] = [
 const MASTER_MEMBERS = ["directory", "echo", "inbox", "issue", "kudos", "roll", "log"];
 
 function read_source(rel: string): string {
-    const p = path.join(RGOV, rel);
+    const p = path.join(rgov_dir, rel);
     if (!fs.existsSync(p)) throw new Error(`missing contract source: ${p}`);
     return fs.readFileSync(p, "utf-8");
+}
+
+/**
+ * The contract sources come from the rgov repo. The default is a /tmp clone, which does not survive
+ * a reboot, so fall back to a cached clone rather than failing at the first deploy.
+ */
+function resolve_rgov(): void {
+    if (fs.existsSync(path.join(rgov_dir, "rholang/core/Inbox.rho"))) return;
+
+    const cache = path.join(HEREDIR, ".rgov-cache");
+    if (!fs.existsSync(path.join(cache, "rholang/core/Inbox.rho"))) {
+        console.log(`contracts not found at ${rgov_dir} — cloning rchain-community/rgov into ${cache}\n`);
+        const res = spawnSync(
+            "git",
+            ["clone", "--depth", "1", "https://github.com/rchain-community/rgov", cache],
+            { stdio: "inherit" }
+        );
+        if (res.status !== 0) {
+            throw new Error(
+                `could not clone rgov (exit ${res.status}); pass --rgov <dir> to point at a checkout`
+            );
+        }
+    }
+
+    rgov_dir = cache;
 }
 
 /** Substitute a dependency's URI into a `rho:id:...` placeholder, left to right. */
@@ -127,6 +153,8 @@ function save_manifest(uris: Record<string, string>) {
 }
 
 async function main() {
+    resolve_rgov();
+
     const acct = await get_account_from_private_key(KEY);
     if (!acct) throw new Error("could not derive a wallet from the deploy key");
 
@@ -137,7 +165,7 @@ async function main() {
     };
 
     console.log(`node:     ${NODE}`);
-    console.log(`rgov:     ${RGOV}`);
+    console.log(`rgov:     ${rgov_dir}`);
     console.log(`deployer: ${acct.revAddr}`);
     console.log(`manifest: ${path.relative(process.cwd(), MANIFEST)}`);
     if (DRY_RUN) console.log("(dry run — no deploys will be sent)\n");
@@ -198,7 +226,7 @@ async function main() {
         return;
     }
 
-    const master_source = path.join(RGOV, "bootstrap/create-master-contract-directory-testnet.rho");
+    const master_source = path.join(rgov_dir, "bootstrap/create-master-contract-directory-testnet.rho");
     if (!fs.existsSync(master_source)) throw new Error(`missing ${master_source}`);
 
     // Replace the seven hardcoded member URIs positionally with the ones we just deployed.

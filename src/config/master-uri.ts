@@ -13,10 +13,20 @@
 import { built_in_nodes } from "../utils/globals";
 
 export const MASTER_URI: Record<string, string> = {
-    /** https://rnodeapi.rhobot.net — not yet bootstrapped. */
-    rhobot: "",
-    /** A local RNode devnet (`~/RNodeRust`, tools/devnet.sh). */
-    localhost: "",
+    /**
+     * https://rnodeapi.rhobot.net — from the upstream rgov record
+     * (`rgov/src/MasterURI.rhobot.json`). Whether this chain still has the contract set behind it
+     * is what the two-step `GetMe` handshake settles; if it does not, re-bootstrap with
+     * `scripts/bootstrap-rgov.ts` and replace this value with the URI it prints.
+     */
+    rhobot: "rho:id:s5k4ghyjppnehrwk8s3fria5febwck3ekpbuki9wdm9grbmbdiy8js",
+    /**
+     * A local RNode devnet (`~/RNodeRust`, tools/devnet.sh) — from the upstream record
+     * (`rgov/src/MasterURI.localhost.json`), written by its own `bootstrap/deploy-all`. A fresh
+     * devnet has no such contracts, so bootstrap it to get a URI that belongs to *that* chain.
+     */
+    localhost: "rho:id:ao5pwhsj6sjtequ47oo8d6jw4dyu7fk89nmzsofjxz7j1d68go58ao",
+    /** Upstream ships placeholders here, never bootstrapped — left empty rather than send one. */
     testnet: "",
     mainnet: "",
 };
