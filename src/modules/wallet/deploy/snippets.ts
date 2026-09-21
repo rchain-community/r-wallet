@@ -718,16 +718,16 @@ export const snippets = {
             "  regCh\n" +
             "  in {\n" +
             '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "MasterContractAdmin"]) {\n' +
-            '      trace!({"MCA": MCA}) |\n' +
-            '      MCA!("Directory", regCh)\n' +
+            '      trace!({"MCA": *MCA}) |\n' +
+            '      MCA!("Directory", *regCh)\n' +
             "    } |\n" +
             "    for (MemberDirectory <- regCh) {\n" +
             '      for (@{"read": *MCA, ..._} <<- @[*deployerId, "MasterContractAdmin"]) {\n' +
-            '        trace!({"MCA": MCA}) |\n' +
-            '        MCA!("Roll", regCh)\n' +
+            '        trace!({"MCA": *MCA}) |\n' +
+            '        MCA!("Roll", *regCh)\n' +
             "      } |\n" +
             "      for (rollReg <- regCh) {\n" +
-            '        MemberDirectory!("makeFromURI", rollReg, *return)\n' +
+            '        MemberDirectory!("makeFromURI", *rollReg, *return)\n' +
             "      }\n" +
             "    }\n" +
             "  }\n" +
@@ -851,8 +851,8 @@ export const snippets = {
             "[myGovRevAddr] => {\n" +
             "  new trace, deployId(`rho:rchain:deployId`), deployerId(`rho:rchain:deployerId`), lookup(`rho:registry:lookup`), regCh in {\n" +
             '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
-            '      trace!({"MCA": MCA}) |\n' +
-            '      MCA!("Directory", regCh)\n' +
+            '      trace!({"MCA": *MCA}) |\n' +
+            '      MCA!("Directory", *regCh)\n' +
             "    } | for (memDir <- regCh) {\n" +
             '      memDir!("setup", myGovRevAddr, *deployId)\n' +
             "    }\n" +
@@ -875,8 +875,8 @@ export const snippets = {
             "  in\n" +
             "  {\n" +
             '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
-            '      trace!({"MCA": MCA}) |\n' +
-            '      MCA!("Roll", ch)\n' +
+            '      trace!({"MCA": *MCA}) |\n' +
+            '      MCA!("Roll", *ch)\n' +
             "    } |\n" +
             "    for (@addrSet <- ch) {\n" +
             '      deployId!(["#define", "$agm2020voter", addrSet.contains(myGovRevAddr)])\n' +
