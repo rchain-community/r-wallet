@@ -1,1 +1,8 @@
-fetch failed
+[
+  [
+    "URI",
+    "<RHO-ID>",
+    "Obj",
+    1
+  ]
+]
