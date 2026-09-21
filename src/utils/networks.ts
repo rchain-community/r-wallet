@@ -29,10 +29,8 @@ export const local_nodes = u.range(0, 5).map(local_node);
 export const r_nodes: Named_Node[] = [
 	{
 		group: "RChain Testnet",
-		name: "RChain Testnet",
-		url: "https://deploy.cyberspacetimeclock.com",
-		read_only: { url: "https://explore.cyberspacetimeclock.com" },
-		admin: { url: "https://admin.cyberspacetimeclock.com" }
+		name: "Rhobot Testnet Node",
+		url: "https://rnodeapi.rhobot.net"
 	}
 ];
 
