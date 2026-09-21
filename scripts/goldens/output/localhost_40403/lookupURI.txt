@@ -1,8 +1,1 @@
-[
-  [
-    "URI",
-    "<RHO-ID>",
-    "Obj",
-    "<HEX>"
-  ]
-]
+TypeError: fetch failed

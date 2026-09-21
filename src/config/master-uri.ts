@@ -26,7 +26,7 @@ export const MASTER_URI: Record<string, string> = {
      * `scripts/bootstrap-rgov.ts` — the URI belongs to that chain and to no other, because it is
      * the product of deploying the contract set there (see scripts/rgov-bootstrap.localhost_40403.json).
      */
-    localhost: "rho:id:ijp71jiretw5y97mkg1swbdbgpfk8bbbq9rpm7n4q5498dhd8u5o",
+    localhost: "rho:id:qka94d3rnrrjexur6tztdbr7hmmtqjnwfyyimjzidw5kwydhscqy",
     /** Upstream ships placeholders here, never bootstrapped — left empty rather than send one. */
     testnet: "",
     mainnet: "",

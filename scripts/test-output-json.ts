@@ -241,8 +241,8 @@ interface PaneOutput {
     errored: boolean;
 }
 
-async function run_term(name: string, term: string): Promise<PaneOutput> {
-    if (effective_op(name) === "deploy") {
+async function run_term(name: string, term: string, op?: Op): Promise<PaneOutput> {
+    if ((op ?? effective_op(name)) === "deploy") {
         const acct = await get_account_from_private_key(KEY);
         if (!acct) return { text: "could not derive a wallet from the deploy key", errored: true };
 
@@ -261,7 +261,7 @@ async function run_term(name: string, term: string): Promise<PaneOutput> {
 
 // Some contracts only complete when a message arrives (inbox/chat/ballot readers), so a bare run
 // would hang. Bound each case and record the non-return explicitly instead.
-async function run_bounded(name: string, term: string): Promise<PaneOutput> {
+async function run_bounded(name: string, term: string, op?: Op): Promise<PaneOutput> {
     let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<PaneOutput>(resolve => {
         timer = setTimeout(
@@ -274,7 +274,7 @@ async function run_bounded(name: string, term: string): Promise<PaneOutput> {
     });
 
     try {
-        return await Promise.race([run_term(name, term), timeout]);
+        return await Promise.race([run_term(name, term, op), timeout]);
     } finally {
         clearTimeout(timer);
     }
@@ -350,7 +350,7 @@ async function check_process_api_schema(): Promise<void> {
         '    }\n' +
         '  }\n' +
         '}';
-    const lookup = await run_bounded("schema:registry-lookup", schema_lookup);
+    const lookup = await run_bounded("schema:registry-lookup", schema_lookup, "deploy");
     check(
         /reached-target/.test(lookup.text),
         "schema: rho:registry:lookup replies with the stored value alone, so "
@@ -358,21 +358,26 @@ async function check_process_api_schema(): Promise<void> {
             + "(node: spec/AUDIT.md C18 — reply is currently wrapped as (uri, value))"
     );
 
-    // 2. `rho:block:data` sends `(blockNumber, sender)`.
-    //    Oracle: legacy/.../SystemProcesses.scala:355-361 and its consumer
-    //    legacy/casper/src/test/resources/BlockDataContractTest.rho:15-16. This node sends three
-    //    elements (substituting `timestamp` for the unexposed `seqNum`), which cannot match the
-    //    oracle's two-name pattern, so the consuming contract stalls.
+    // 2. `rho:block:data` replies with **three** values: `(blockNumber, sender, timestamp)`.
+    //    This is a deliberate, documented extension of the oracle (which sends two —
+    //    legacy/.../SystemProcesses.scala:355-361), specified in docs/src/rholang/reference.md:93
+    //    and consumed in full by the node's own genesis vault (RevVault.rho:207-209 binds
+    //    `@blockNumber, @sender, @timestamp`). So this is NOT the defect it first looked like: a
+    //    *legacy* two-name consumer stalls, but the node cannot send two without breaking RevVault
+    //    and therefore REV. Asserted here at the documented arity so a silent change to either
+    //    shape is caught from the consumer side.
     const schema_block_data =
         'new bd(`rho:block:data`), deployId(`rho:rchain:deployId`), ret in {\n' +
         '  bd!(*ret) |\n' +
-        '  for (@blockNumber, @sender <- ret) { deployId!(["block-data", blockNumber, sender]) }\n' +
+        '  for (@blockNumber, @sender, @timestamp <- ret) {\n' +
+        '    deployId!(["block-data-3", blockNumber, sender, timestamp])\n' +
+        '  }\n' +
         '}';
-    const block_data = await run_bounded("schema:block-data", schema_block_data);
+    const block_data = await run_bounded("schema:block-data", schema_block_data, "deploy");
     check(
-        /block-data/.test(block_data.text),
-        "schema: rho:block:data replies with the pair (blockNumber, sender) "
-            + "(node: the reply is currently a 3-element send)"
+        /block-data-3/.test(block_data.text),
+        "schema: rho:block:data replies with three values (blockNumber, sender, timestamp), "
+            + "as documented and as the genesis vault consumes"
     );
 }
 
@@ -458,6 +463,9 @@ async function main() {
         const ok = expected === output;
         check(ok, `${name} [${op_label}] matches golden${ok ? "" : `\n        got: ${JSON.stringify(output)}\n        want: ${JSON.stringify(expected)}`}`);
     }
+
+    console.log("\n--- node response schema ---");
+    await check_process_api_schema();
 
     console.log("\n--- governance handshake ---");
     await check_governance_handshake(acct.revAddr);
