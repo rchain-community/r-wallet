@@ -1,0 +1,12 @@
+// Type-checks the Node/tsx test + tooling scripts, which `tsconfig.json` excludes (it includes
+// only `src`, so `npm run build` never sees them and `tsx` would happily run a script with type
+// errors). Deliberately NOT part of `npm run build`, so a latent error in a script cannot break
+// the Pages deploy. Run with: npm run typecheck:scripts
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src",
+    "scripts/bootstrap-rgov.ts",
+    "scripts/test-output-json.ts"
+  ]
+}

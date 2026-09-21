@@ -704,21 +704,27 @@ export const snippets = {
         ]
     },
     newMemberDirectory: {
+        // Repaired from /tmp/rgov/src/actions/newMemberDirectory.rho, which is broken as shipped:
+        // `trace` and `deployerId` are used but never bound, and both `MCA(...)` calls are missing
+        // their `!` so they never send. The class lookup follows the working convention in
+        // newChat.rho (read the master directory, then `MCA!("<Class>", *ch)`).
         code:
             "[] => {\n" +
             "  new\n" +
             "  return(`rho:rchain:deployId`),\n" +
+            "  trace,\n" +
+            "  deployerId(`rho:rchain:deployerId`),\n" +
             "  lookup(`rho:registry:lookup`),\n" +
             "  regCh\n" +
             "  in {\n" +
             '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "MasterContractAdmin"]) {\n' +
             '      trace!({"MCA": MCA}) |\n' +
-            '      MCA("Directory", regCh)\n' +
+            '      MCA!("Directory", regCh)\n' +
             "    } |\n" +
             "    for (MemberDirectory <- regCh) {\n" +
             '      for (@{"read": *MCA, ..._} <<- @[*deployerId, "MasterContractAdmin"]) {\n' +
             '        trace!({"MCA": MCA}) |\n' +
-            '        MCA("Roll", regCh)\n' +
+            '        MCA!("Roll", regCh)\n' +
             "      } |\n" +
             "      for (rollReg <- regCh) {\n" +
             '        MemberDirectory!("makeFromURI", rollReg, *return)\n' +
@@ -789,15 +795,24 @@ export const snippets = {
         fields: []
     },
     peekKudos: {
+        // The upstream source references a bare `KudosReg`, a build-time placeholder that was never
+        // substituted, and sends to a fresh local channel so nothing reaches the result channel.
+        // Repaired: reach the Kudos class through the master directory (as newChat.rho does) and
+        // return on rho:rchain:deployId so the editor shows the value.
         code:
             "[] => {\n" +
             "  new\n" +
-            "  return,\n" +
-            "  lookup(`rho:registry:lookup`), ch\n" +
+            "  deployId(`rho:rchain:deployId`),\n" +
+            "  deployerId(`rho:rchain:deployerId`),\n" +
+            "  lookupCh,\n" +
+            "  ch\n" +
             "  in {\n" +
-            "    lookup!(KudosReg, *ch) | for (Kudos <- ch) {\n" +
-            '      Kudos!("peek", *ch) | for (@current <-ch ) {\n' +
-            '        return!(["#define", "$kudos", current])\n' +
+            '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
+            '      MCA!("Kudos", *lookupCh) |\n' +
+            "      for (Kudos <- lookupCh) {\n" +
+            '        Kudos!("peek", *ch) | for (@current <- ch) {\n' +
+            '          deployId!(["#define", "$kudos", current])\n' +
+            "        }\n" +
             "      }\n" +
             "    }\n" +
             "  }\n" +
@@ -822,35 +837,42 @@ export const snippets = {
         fields: [str_field("them")]
     },
     claimWithInbox: {
+        // Upstream (src/actions/claimWithInbox.rho) shares checkRegistration's defects:
+        // `MCA("Directory", regCh)` missing its `!`, `deployerId` unbound, and the reply routed to
+        // a fresh local channel instead of rho:rchain:deployId.
         code:
             "[myGovRevAddr] => {\n" +
-            "  new trace, return, lookup(`rho:registry:lookup`), regCh in {\n" +
+            "  new trace, deployId(`rho:rchain:deployId`), deployerId(`rho:rchain:deployerId`), lookup(`rho:registry:lookup`), regCh in {\n" +
             '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
             '      trace!({"MCA": MCA}) |\n' +
-            '      MCA("Directory", regCh)\n' +
+            '      MCA!("Directory", regCh)\n' +
             "    } | for (memDir <- regCh) {\n" +
-            '      memDir!("setup", myGovRevAddr, *return)\n' +
+            '      memDir!("setup", myGovRevAddr, *deployId)\n' +
             "    }\n" +
             "  }\n" +
             "}",
         fields: [rev_field("myGovRevAddr")]
     },
     checkRegistration: {
+        // Upstream (src/actions/checkRegistration.rho) has three defects: `MCA("Roll", ch)` is
+        // missing its `!` so it never sends (a parse error), `deployerId` is used but never bound,
+        // and the result goes to a fresh local channel rather than the deploy's result channel.
         code:
             "[myGovRevAddr] => {\n" +
             "  new\n" +
             "  trace,\n" +
-            "  return,\n" +
+            "  deployId(`rho:rchain:deployId`),\n" +
+            "  deployerId(`rho:rchain:deployerId`),\n" +
             "  lookup(`rho:registry:lookup`),\n" +
             "  ch\n" +
             "  in\n" +
             "  {\n" +
             '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
             '      trace!({"MCA": MCA}) |\n' +
-            '      MCA("Roll", ch)\n' +
+            '      MCA!("Roll", ch)\n' +
             "    } |\n" +
             "    for (@addrSet <- ch) {\n" +
-            '      return!(["#define", "$agm2020voter", addrSet.contains(myGovRevAddr)])\n' +
+            '      deployId!(["#define", "$agm2020voter", addrSet.contains(myGovRevAddr)])\n' +
             "    }\n" +
             "  }\n" +
             "}",
@@ -932,9 +954,11 @@ export const snippets = {
             "[] => {\n" +
             "  new\n" +
             "  out(`rho:io:stdout`),\n" +
+            "  return(`rho:rchain:deployId`),\n" +
             "  a(`rho:attachment:1`)\n" +
             "  in {\n" +
-            "    out!(*a)\n" +
+            "    out!(*a) |\n" +
+            "    return!(*a)\n" +
             "  }\n" +
             "}",
         fields: []

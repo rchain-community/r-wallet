@@ -140,6 +140,15 @@ export async function deploy(
 
     // Poll deploy-status to a terminal state and surface the deploy's returned result so the
     // Deploy "Output" box can show the JSON (mirrors the faucet submit-and-track loop).
+    //
+    // `NotProcessed` is not one situation but three (node's block_api_impl.rs): "Pooled" (accepted,
+    // awaiting a block), "Block not yet available" (block exists but is not readable yet) and
+    // "Unknown" (this node's DAG has no record of the id). Only the first two are worth waiting on.
+    // An "Unknown" that never flips used to consume the whole timeout and then report "timed out",
+    // which hid both the real reason and the fact that no result was ever coming.
+    let last_status = "pending";
+    let unknown_streak = 0;
+
     for (let i = 0; i < 60; i++) {
         let st;
         try {
@@ -154,10 +163,30 @@ export async function deploy(
         if ("ProcessedWithError" in st) {
             return { deployId, expr: null, error: st.ProcessedWithError.deployError };
         }
+
+        last_status = st.NotProcessed.status;
+        unknown_streak = last_status === "Unknown" ? unknown_streak + 1 : 0;
+
+        // Tolerate a short run of "Unknown" (a node can answer that before it indexes a fresh
+        // deploy), but do not spend the full timeout on one this node will never resolve.
+        if (unknown_streak >= 5) {
+            return {
+                deployId,
+                expr: null,
+                error: `Deploy ${deployId} is unknown to this node: it has no record of the id, `
+                    + `so no result is available (status "${last_status}" after `
+                    + `${unknown_streak} polls).`,
+            };
+        }
+
         await new Promise(r => setTimeout(r, 3000));
     }
 
-    return { deployId, expr: null, error: "Timed out waiting for deploy result." };
+    return {
+        deployId,
+        expr: null,
+        error: `Timed out waiting for deploy result (last status: "${last_status}").`,
+    };
 }
 
 export async function explore(

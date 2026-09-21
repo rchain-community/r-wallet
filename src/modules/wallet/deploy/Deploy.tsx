@@ -4,9 +4,10 @@ import { useNodes, useLayout } from "Context";
 import * as Components from "components";
 import * as u from 'utils';
 import Editor, { loader, type EditorProps } from "@monaco-editor/react";
-import { formatRhoResult } from "api";
+import { formatRhoResult, output_text } from "api";
 import { BRAND } from "../../../config/branding";
 import { snippets, snippet_apply, snippet_meta, common_field_help, common_field_defaults, Snippet } from "./snippets";
+import { master_uri_for } from "../../../config/master-uri";
 
 const snippet_keys = Object.keys(snippets) as Array<keyof typeof snippets>;
 
@@ -63,8 +64,6 @@ function CodeEditor(props: CodeEditorProps) {
 
   if (do_render) root.render(editor);
 }
-
-const ReadcapURI = "rho:id:exfetum749zikr1m87smo7y77gc3rfjpfikzzwa8fj78fr44i3oof5";
 
 function Snippet_Fields(
   props: {
@@ -249,9 +248,7 @@ export function Deploy() {
   }
 
   function show_output() {
-    if (err) return err;
-    if (msg) return msg;
-    return "";
+    return output_text(err, msg);
   }
 
   function set_arg(idx: number, val: any) {
@@ -284,7 +281,7 @@ export function Deploy() {
       let new_args = s.fields.map(field =>
         meta.defaults?.[field.name]
         ?? common_field_defaults[field.name]
-        ?? (field.type === "MasterURI" ? ReadcapURI
+        ?? (field.type === "MasterURI" ? master_uri_for(node_context.node.network)
           : field.type === "walletRevAddr" ? (u.g.user?.revAddr ?? "")
           : null)
       );

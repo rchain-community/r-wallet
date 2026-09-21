@@ -10,6 +10,8 @@ export interface Node {
 export interface Named_Node extends Node {
 	name: string;
 	group?: string;
+	/** Key into the governance master-URI table (src/config/master-uri.ts). */
+	network?: string;
 	read_only?: Node;
 	admin?: Node;
 	editable?: boolean;
@@ -18,6 +20,7 @@ export interface Named_Node extends Node {
 function local_node(n: number): Named_Node {
 	return {
 		group: "local",
+		network: "localhost",
 		name: `localhost-${n}`,
 		url: "http://localhost",
 		port: 40403 + n*10,
@@ -29,6 +32,7 @@ export const local_nodes = u.range(0, 5).map(local_node);
 export const r_nodes: Named_Node[] = [
 	{
 		group: "RChain Testnet",
+		network: "rhobot",
 		name: "Rhobot Testnet Node",
 		url: "https://rnodeapi.rhobot.net"
 	}

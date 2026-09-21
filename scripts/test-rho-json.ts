@@ -2,7 +2,7 @@
 // formatting). Pure/deterministic — no devnet required.
 // Run with: npm run test:rho-json
 
-import { rhoExprToJson, formatRhoJson, formatRhoResult } from "../src/api/rho-json";
+import { rhoExprToJson, formatRhoJson, formatRhoResult, output_text } from "../src/api/rho-json";
 import type { RhoExpr } from "../src/api/types";
 
 let failures = 0;
@@ -70,6 +70,18 @@ check(
     formatRhoResult([{ ExprTuple: [{ ExprBool: true }, { ExprString: "done" }] }]) === '[\n  [\n    true,\n    "done"\n  ]\n]',
     "formatRhoResult([tuple]) -> nested JSON"
 );
+
+// output_text — what the "Output" window actually displays. An error wins over a result,
+// which is the rule that let a deploy-status problem masquerade as "no JSON shown".
+const json = formatRhoResult([{ ExprInt: 42 }]);
+check(output_text(null, json) === json, "output_text shows the JSON when there is no error");
+check(
+    output_text("Timed out waiting for deploy result.", json) === "Timed out waiting for deploy result.",
+    "output_text prefers the error over the JSON"
+);
+check(output_text(null, null) === "", "output_text is empty when there is neither error nor result");
+check(output_text(null, "") === "", "output_text is empty for an empty result string");
+check(output_text("boom", null) === "boom", "output_text shows an error with no result");
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

@@ -1,0 +1,1 @@
+Error: "Top level free variables are not allowed: Par { <elided> }

@@ -176,7 +176,24 @@ npm run test:unit       # pure unit tests — no devnet required
 npm run test:rho-json   # rhoExprToJson + formatRhoJson (incl. the Output-window formatter)
 npm run test:deploy     # deploy result-shapes + Output-window JSON (devnet)
 npm run test:api        # integration test against a running devnet
+npm run test:output     # Output-window JSON for every editor snippet, against goldens
 ```
+
+**`test:output`** sweeps every snippet in `snippets.ts`, builds the term the editor would build, runs
+it through `src/utils/rnode.ts`, and compares what the Output pane would show
+(`output_text(err, formatRhoResult(expr))`) with a committed golden in
+`scripts/goldens/output/<host>/<snippet>.txt`. A snippet missing from its `CASES` table fails the
+run, so a new snippet cannot silently escape coverage.
+
+- `-- --node <url>` targets another node (`RNODE_URL` also works); default `http://localhost:40403`.
+- `-- --record` rewrites the goldens for that host; the default run only compares.
+- Contracts that read `rho:rchain:deployId` / `rho:rchain:deployerId` are run through the deploy
+  path automatically: `explore-deploy` does not bind those channels, so exploring them fails with
+  `No value set for \`rho:rchain:deployId\`` — an artefact of explore, not of the contract.
+- Run-dependent output is normalised before recording *and* comparing: REV addresses → `<ADDR>`,
+  registered `rho:id`s → `<RHO-ID>`, deploy signatures/block hashes → `<HEX>`, a free-variable dump
+  tail → `<elided>`, and the top-level result is sorted (a result is an unordered Par, so its order
+  varies between runs).
 
 **Unit tests** (`scripts/test-unit.ts`) import the real modules and cover, without a
 devnet: deploy signing (`signDeploy` + the `shardId` field-11 serialization + RCHIP #39

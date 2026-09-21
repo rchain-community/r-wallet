@@ -46,3 +46,17 @@ export function formatRhoJson(value: unknown): string {
 export function formatRhoResult(exprs: RhoExpr[] | null | undefined): string | null {
     return exprs ? formatRhoJson(exprs.map(rhoExprToJson)) : null;
 }
+
+// What the editor's "Output" window displays, given the operation's error and its
+// formatted result: an error wins over a result, and neither means an empty pane.
+// Extracted from Deploy.tsx's `show_output()` so the precedence — which is what turned
+// a deploy status problem into "no JSON shown" — is pinned by a test rather than
+// depending on a browser.
+export function output_text(
+    err: string | null | undefined,
+    msg: string | null | undefined
+): string {
+    if (err) return err;
+    if (msg) return msg;
+    return "";
+}
