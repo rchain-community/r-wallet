@@ -322,6 +322,60 @@ async function check_governance_handshake(wallet_addr: string): Promise<void> {
     );
 }
 
+/**
+ * The response schema the wallet depends on, asserted from the consumer side.
+ *
+ * Each case pins a *node* contract rather than a contract's behaviour, so a node regression is
+ * caught here (in the app that consumes it) as well as in the node's own conformance tests. A
+ * failure in this group is a node-side finding, not a wallet bug: the message names the register
+ * entry so the two repos stay legible together.
+ */
+async function check_process_api_schema(): Promise<void> {
+    // 1. `rho:registry:lookup(uri, ret)` sends the STORED VALUE ALONE on `ret`.
+    //    Oracle: the genesis `Registry.rho` contract, whose `lookup` forwards
+    //    `TreeHashMap!("get", …)` (legacy/casper/src/main/resources/Registry.rho:397-401), with its
+    //    recorded output at legacy/rholang/examples/tut-registry.rho:8,42-47.
+    //    `spec/AUDIT.md` C18 — this node wraps the reply in `(uri, value)`, so the value binds to a
+    //    *name* and the send below is a silent no-op. Every oracle-era client is written this way.
+    const schema_lookup =
+        'new target, ins(`rho:registry:insertArbitrary`), look(`rho:registry:lookup`),\n' +
+        '    deployId(`rho:rchain:deployId`), uCh, lCh, rCh in {\n' +
+        '  contract target(@x, ret) = { ret!(["target-got", x]) } |\n' +
+        '  ins!(bundle+{*target}, *uCh) |\n' +
+        '  for (@uri <- uCh) {\n' +
+        '    look!(uri, *lCh) |\n' +
+        '    for (T <- lCh) {\n' +
+        '      T!("schema", *rCh) |\n' +
+        '      for (@r <- rCh) { deployId!(["reached-target", r]) }\n' +
+        '    }\n' +
+        '  }\n' +
+        '}';
+    const lookup = await run_bounded("schema:registry-lookup", schema_lookup);
+    check(
+        /reached-target/.test(lookup.text),
+        "schema: rho:registry:lookup replies with the stored value alone, so "
+            + "`for (X <- ch) { X!(…) }` reaches the registered contract "
+            + "(node: spec/AUDIT.md C18 — reply is currently wrapped as (uri, value))"
+    );
+
+    // 2. `rho:block:data` sends `(blockNumber, sender)`.
+    //    Oracle: legacy/.../SystemProcesses.scala:355-361 and its consumer
+    //    legacy/casper/src/test/resources/BlockDataContractTest.rho:15-16. This node sends three
+    //    elements (substituting `timestamp` for the unexposed `seqNum`), which cannot match the
+    //    oracle's two-name pattern, so the consuming contract stalls.
+    const schema_block_data =
+        'new bd(`rho:block:data`), deployId(`rho:rchain:deployId`), ret in {\n' +
+        '  bd!(*ret) |\n' +
+        '  for (@blockNumber, @sender <- ret) { deployId!(["block-data", blockNumber, sender]) }\n' +
+        '}';
+    const block_data = await run_bounded("schema:block-data", schema_block_data);
+    check(
+        /block-data/.test(block_data.text),
+        "schema: rho:block:data replies with the pair (blockNumber, sender) "
+            + "(node: the reply is currently a 3-element send)"
+    );
+}
+
 async function main() {
     console.log(`node:    ${NODE}`);
     console.log(`goldens: ${path.relative(process.cwd(), GOLDEN_DIR)}${RECORD ? "  (recording)" : ""}\n`);

@@ -820,16 +820,23 @@ export const snippets = {
         fields: []
     },
     awardKudos: {
+        // Same two defects as peekKudos: the upstream source references a bare `KudosReg` (a
+        // build-time placeholder that was never substituted), so reach the class through the master
+        // directory instead, and return on rho:rchain:deployId so the editor shows the value.
         code:
             "[them] => {\n" +
             "  new\n" +
             "  deployId(`rho:rchain:deployId`),\n" +
-            "  lookup(`rho:registry:lookup`),\n" +
+            "  deployerId(`rho:rchain:deployerId`),\n" +
+            "  lookupCh,\n" +
             "  ch\n" +
             "  in {\n" +
-            "    lookup!(KudosReg, *ch) | for (Kudos <- ch) {\n" +
-            '      Kudos!("award", them, *ch) | for (@current <- ch) {\n' +
-            '        deployId!(["#define", "$kudos", current])\n' +
+            '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
+            '      MCA!("Kudos", *lookupCh) |\n' +
+            "      for (Kudos <- lookupCh) {\n" +
+            '        Kudos!("award", them, *ch) | for (@current <- ch) {\n' +
+            '          deployId!(["#define", "$kudos", current])\n' +
+            "        }\n" +
             "      }\n" +
             "    }\n" +
             "  }\n" +

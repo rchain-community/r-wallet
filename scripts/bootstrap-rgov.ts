@@ -74,12 +74,19 @@ const STEPS: Step[] = [
         note: "the member directory / roll; imports directory.rho and inbox.rho by URI",
     },
     { name: "issue", file: "rholang/core/Issue.rho" },
-    { name: "echo", file: "Echo.rho" },
-    { name: "log", file: "mq.rho", note: "message queue — the master directory's Log slot" },
 ];
 
-// The master directory takes its members positionally; this is the order in
-// bootstrap/create-master-contract-directory-testnet.rho.
+/**
+ * The master directory takes seven members positionally; this is the order in
+ * bootstrap/create-master-contract-directory-testnet.rho. `Echo` (Echo.rho) and `Log` (mq.rho)
+ * define classes but never call `rho:registry:insertArbitrary`, so they publish no URI — and
+ * nothing reads those two keys back (no consumer in rgov's `src/actions`, rgov's `rholang/`, or the
+ * wallet's snippets). Their slots therefore reuse an already-registered class so the directory's
+ * lookups and writes succeed; the entries are write-only placeholders. The alternative — making
+ * those two files self-registering — means editing upstream contracts to add a registration
+ * epilogue, which buys nothing while no caller reads the keys.
+ */
+const SLOT_ALIASES: Record<string, string> = { echo: "directory", log: "directory" };
 const MASTER_MEMBERS = ["directory", "echo", "inbox", "issue", "kudos", "roll", "log"];
 
 function read_source(rel: string): string {
@@ -142,6 +149,13 @@ function extract_uri(expr: unknown): string | null {
     walk(expr);
     return found;
 }
+
+/**
+ * `rho:registry:lookup` replies with the stored value alone, so consuming it is a plain
+ * `lookup!(uri, *ch) | for (X <- ch) { X!(…) }` — no destructuring. The node's native handler
+ * currently wraps the reply in `(uri, value)`, which the node-side fix (C18) removes; see
+ * `spec/API-SCHEMA.md` in r-node for the standard this depends on.
+ */
 
 function load_manifest(): Record<string, string> {
     if (!fs.existsSync(MANIFEST)) return {};
@@ -219,7 +233,14 @@ async function main() {
         return;
     }
 
-    const missing = MASTER_MEMBERS.filter(m => !uris[m] || uris[m].startsWith("<pending"));
+    // Resolve each positional slot to a URI: a registered class, or the alias for the two
+    // write-only slots.
+    const slot_uri = (member: string): string => {
+        const source = SLOT_ALIASES[member] ?? member;
+        return uris[source] ?? "";
+    };
+
+    const missing = MASTER_MEMBERS.filter(m => !slot_uri(m) || slot_uri(m).startsWith("<pending"));
     if (missing.length > 0 && !DRY_RUN) {
         console.log(`\ncannot build the master directory yet — missing URIs for: ${missing.join(", ")}`);
         console.log("re-run without --dry-run to deploy the members first.");
@@ -234,11 +255,14 @@ async function main() {
     let replaced = 0;
     template = template.replace(/`rho:id:[0-9a-z]+`/g, () => {
         const member = MASTER_MEMBERS[replaced++];
-        return `\`${uris[member]}\``;
+        return `\`${slot_uri(member)}\``;
     });
     if (replaced !== MASTER_MEMBERS.length) {
         throw new Error(`expected ${MASTER_MEMBERS.length} member URIs in the master directory, found ${replaced}`);
     }
+
+    // The template is deployed verbatim: `rho:registry:lookup` replies with the stored value alone
+    // (the schema standard), so the upstream `for (X <- ch)` consumption is already correct.
 
     if (DRY_RUN) {
         console.log(`\nplan   master       bootstrap/create-master-contract-directory-testnet.rho`);
