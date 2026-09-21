@@ -59,7 +59,10 @@ Then in the app, select the `localhost-0` node.
 
 ## Routes
 
-`/` (editor) · `/access` (wallet access) · `/balance` · `/transfer` · `/settings`
+`/` (editor) · `/access` (wallet access) · `/balance` · `/transfer` · `/history` · `/settings`
+
+The `/access` page also carries a **TESTNET WALLET** card, which loads a pre-funded
+testnet account and shows its address and private key.
 
 ## Build
 

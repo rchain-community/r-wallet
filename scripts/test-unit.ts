@@ -9,6 +9,7 @@ import * as bc from "../src/utils/blockchain";
 import * as rho from "../src/utils/rho";
 import { snippets, snippet_apply, snippet_meta } from "../src/modules/wallet/deploy/snippets";
 import { tx_list, add_tx, refresh_tx_states } from "../src/utils/transactions";
+import { PLAYGROUND_ACCOUNTS, pick_random_account } from "../src/config/playground";
 import type { DeployData, DeployRequest } from "../src/api/types";
 
 const DEPLOYER_PRIV = "a68a6e6cca30f81bd24a719f3145d20e8424bd7b396309b0708a16c7d8000b76";
@@ -207,6 +208,46 @@ async function main() {
     await refresh_tx_states("http://x");
     check(tx_list.some(t => t.deployId === "deadbeef" && t.status === "pending"), "refresh_tx_states reconciles a pooled deploy as pending");
     globalThis.fetch = originalFetch;
+
+    // 11. playground accounts: every published key derives its published address
+    // (the keys are public by design — this only guards the table against drifting)
+    for (const account of PLAYGROUND_ACCOUNTS) {
+        const derived = await bc.get_account_from_private_key(account.privKey);
+        check(
+            derived?.revAddr === account.revAddr,
+            `playground ${account.name}: key derives ${account.revAddr}`
+        );
+    }
+    check(
+        new Set(PLAYGROUND_ACCOUNTS.map(a => a.name)).size === PLAYGROUND_ACCOUNTS.length,
+        "playground account names are unique"
+    );
+
+    // 12. testnet wallet: the card's random pick
+    check(PLAYGROUND_ACCOUNTS.length > 0, `testnet accounts: ${PLAYGROUND_ACCOUNTS.length} available`);
+    check(
+        pick_random_account(undefined, () => 0)?.revAddr === PLAYGROUND_ACCOUNTS[0].revAddr,
+        "pick with rand=0 selects the first account"
+    );
+    check(
+        pick_random_account(undefined, () => 0.999)?.revAddr === PLAYGROUND_ACCOUNTS[PLAYGROUND_ACCOUNTS.length - 1].revAddr,
+        "pick with rand~1 selects the last account"
+    );
+    check(
+        pick_random_account(undefined, () => 1)?.revAddr === PLAYGROUND_ACCOUNTS[0].revAddr,
+        "an out-of-range rand is clamped instead of yielding undefined"
+    );
+
+    const excluded_addr = PLAYGROUND_ACCOUNTS[0].revAddr;
+    let avoided = true;
+    for (let i = 0; i < 50; i++) {
+        if (pick_random_account(excluded_addr)?.revAddr === excluded_addr) avoided = false;
+    }
+    check(avoided, "the excluded account is never re-picked while others remain");
+    check(
+        pick_random_account("1111notARealAddress", () => 0)?.revAddr === PLAYGROUND_ACCOUNTS[0].revAddr,
+        "excluding an address outside the table is a no-op"
+    );
 
     console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
     process.exit(failures === 0 ? 0 : 1);

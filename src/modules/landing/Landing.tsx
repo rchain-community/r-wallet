@@ -2,9 +2,15 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Components from 'components';
 import { useLayout } from 'Context';
-import { icon } from 'assets';
+import { Icon, icon } from 'assets';
 import * as u from 'utils';
 import { BRAND } from "../../config/branding";
+import {
+    PLAYGROUND_ACCOUNTS,
+    PLAYGROUND_NETWORK,
+    pick_random_account,
+    type PlaygroundAccount,
+} from "../../config/playground";
 
 export function Landing() {
     let navigate = useNavigate();
@@ -12,6 +18,11 @@ export function Landing() {
 
     let [has_metamask, set_has_metamask] = useState(false);
     let [waiting, set_waiting] = useState(false);
+    let [picking, set_picking] = useState(false);
+
+    // Testnet wallet card: the loaded account, and whether its key is revealed.
+    let [loaded, set_loaded] = useState<PlaygroundAccount | null>(null);
+    let [revealed, set_revealed] = useState(false);
 
     async function detect_eth() {
         const {ethDetected} = await import("../../../vendored/@tgrospic/rnode-http-js/src");
@@ -88,6 +99,104 @@ export function Landing() {
         );
     }
 
+    // Load a pre-funded testnet wallet, excluding whichever is already active so
+    // pressing the button again lands somewhere new.
+    function load_wallet() {
+        let account = pick_random_account(u.g.user?.revAddr);
+        if (!account) { return; }
+
+        set_loaded(account);
+        set_revealed(false);
+    }
+
+    async function use_wallet() {
+        if (!loaded) { return; }
+
+        set_picking(true);
+        await u.playground.activate_account(loaded, layout, navigate);
+        set_picking(false);
+    }
+
+    function copy_key() {
+        if (loaded) {
+            navigator.clipboard.writeText(loaded.privKey);
+        }
+    }
+
+    let card_playground: JSX.Element|null = null;
+    if (PLAYGROUND_ACCOUNTS.length > 0) {
+        card_playground = (
+            <Components.Card
+                icon={icon("wallet-small")}
+                icon_color={"icon-primary-100"}
+                title="TESTNET WALLET"
+                bg={"bg-primary-600"} fg={"text-base-50"}
+                shadow={"shadow-primary-600"}
+            >
+                {
+                    loaded === null
+                    ? <>
+                        <p className="mb-auto">
+                            Load one of {PLAYGROUND_ACCOUNTS.length} pre-funded {PLAYGROUND_NETWORK} wallets.
+                        </p>
+
+                        <div className="flex justify-end">
+                            <Components.Button
+                                className="bg-base-50 text-base-950"
+                                onClick={load_wallet}
+                            >
+                                LOAD WALLET
+                            </Components.Button>
+                        </div>
+                    </>
+                    : <>
+                        <div className="flex flex-col">
+                            <span className="text-xs font-bold">{loaded.name}</span>
+                            <span className="font-mono text-xs break-all opacity-90">{loaded.revAddr}</span>
+                        </div>
+
+                        <label title="PRIVATE KEY" className="items-center">
+                            <input
+                                className="font-mono text-xs"
+                                type={revealed ? "text" : "password"}
+                                value={loaded.privKey}
+                                readOnly
+                            />
+
+                            <Components.ToggleButton val={revealed} setval={set_revealed} />
+
+                            <Components.Button
+                                className="p-2 rounded-full"
+                                title="COPY PRIVATE KEY"
+                                onClick={copy_key}
+                            >
+                                <Icon name="copy" color={"icon-base-50"} className="w-4 h-4" />
+                            </Components.Button>
+                        </label>
+
+                        <div className="flex flex-wrap gap-2 justify-between">
+                            <Components.Button
+                                className="bg-base-50 text-base-950"
+                                disabled={picking}
+                                onClick={load_wallet}
+                            >
+                                LOAD ANOTHER
+                            </Components.Button>
+
+                            <Components.Button
+                                className="bg-base-50 text-base-950"
+                                disabled={picking}
+                                onClick={use_wallet}
+                            >
+                                { picking ? "CONNECTING…" : "USE WALLET" }
+                            </Components.Button>
+                        </div>
+                    </>
+                }
+            </Components.Card>
+        );
+    }
+
     return (
         <Components.Strip bg="" className="sm:mt-16 max-w-fit">
             <h2 className="text-center mb-8">Access or create your {BRAND.name}</h2>
@@ -150,6 +259,8 @@ export function Landing() {
                         </Components.Button>
                     </div>
                 </Components.Card>
+
+                { card_playground }
 
             </div>
 

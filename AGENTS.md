@@ -49,7 +49,10 @@ domain results), `src/api/sign.ts` (secp256k1 deploy signing), `src/api/rho-json
 (key/address derivation), `src/utils/networks.ts` (nodes), `src/config/branding.ts`
 (`BRAND`).
 
-Routes: `/` editor, `/access` landing, `/balance`, `/transfer`, `/settings`.
+Routes: `/` editor, `/access` landing, `/balance`, `/transfer`, `/history`, `/settings`.
+The `/access` landing page carries the **TESTNET WALLET** card (see
+`src/config/playground.ts`): it loads a pre-funded testnet account and reveals its
+address and private key, then can adopt it as the active wallet.
 
 ## API contract (summary)
 

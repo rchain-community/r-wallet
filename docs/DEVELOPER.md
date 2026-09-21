@@ -34,9 +34,12 @@ Supporting modules:
 | `src/utils/blockchain.ts` | key/address derivation (keystore, mnemonic, private key, MetaMask) |
 | `src/utils/networks.ts` | node definitions + URL helpers |
 | `src/config/branding.ts` | `BRAND` (name/ticker/subunit) — use this, don't hardcode strings |
+| `src/config/playground.ts` | pre-funded testnet accounts + `pick_random_account` for the landing card |
+| `src/utils/playground.ts` | `activate_account`: derive a testnet account, set it active, route to `/balance` |
 
-Routes: `/` (editor), `/access` (landing), `/balance`, `/transfer`, `/settings`,
-plus `/access/*` and `/create/*`.
+Routes: `/` (editor), `/access` (landing), `/balance`, `/transfer`, `/history`,
+`/settings`, plus `/access/*` and `/create/*`. The landing page's **TESTNET WALLET**
+card loads a pre-funded testnet account and reveals its address and private key.
 
 ---
 
