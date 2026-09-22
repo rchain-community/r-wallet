@@ -1,0 +1,27 @@
+// The governance handshake, staged — the node agent's probe, used here to close their open `createMe`
+// item from the client side. Run against a fresh chain (genesis carries the set) with:
+//   ~/RNodeRust/tools/devnet.sh deploy scripts/handshake.rho
+//   docker logs devnet-bootstrap 2>&1 | grep -E "stage:|getting deployer|got pub key|got revaddr|creating"
+//
+// Two things it exists to get right, both of which cost me real time:
+//   1. the feature's log channel is a *repeated drain* (`<=`), never rho:io:stdout — getMe logs
+//      multi-element lines and a one-datum sink errors mid-flow, silently;
+//   2. it runs as a deploy, so `rho:rchain:deployerId` is a real public key that
+//      RevAddress!("fromPublicKey", …) can derive from.
+new rl(`rho:registry:lookup`), deployerId(`rho:rchain:deployerId`), out(`rho:io:stdout`),
+    capCh, getMeCh, stuffCh in {
+  out!("stage:1 lookup sent") |
+  rl!(`rho:id:wxc4mwdh7otq4fd6iuxt84inepssyz5tugojf7ao68dkh4ebbncy`, *capCh) |
+  for (MCAread <- capCh) {
+    out!("stage:2 readcap resolved") |
+    MCAread!("GetMe", *getMeCh) |
+    for (GetMe <- getMeCh) {
+      out!("stage:3 directory answered GetMe") |
+      new logCh in {
+        for (@_line <= logCh) { Nil } |
+        GetMe!(*deployerId, *stuffCh, *logCh) |
+        for (@_reply <- stuffCh) { out!("stage:4 getMe answered") }
+      }
+    }
+  }
+}
