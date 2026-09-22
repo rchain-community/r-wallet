@@ -4,7 +4,7 @@
 // Includes RCHIP #39 attachments: field 12 (`repeated bytes`, hex in JSON) is
 // part of the signed payload, so tampering with or stripping an attachment fails.
 
-import elliptic from "elliptic";
+import { secp256k1 } from "@noble/curves/secp256k1.js";
 import blake from "blakejs";
 import jspb from "google-protobuf";
 import type { DeployData, DeployRequest } from "./types";
@@ -79,12 +79,16 @@ function toDeployRequestData(deployData: DeployData): DeployData {
 }
 
 export function signDeploy(deployData: DeployData, privateKey: string): DeployRequest {
-    const secp256k1 = new elliptic.ec("secp256k1");
-    const key = secp256k1.keyFromPrivate(privateKey.replace(/^0x/, ""));
+    const priv = decodeBase16(privateKey.replace(/^0x/, ""));
 
-    const deployer = Uint8Array.from(key.getPublic("array"));
-    const hashed = blake.blake2bHex(deployDataProtobufSerialize(deployData), undefined, 32);
-    const sig = Uint8Array.from(key.sign(hashed, { canonical: true }).toDER());
+    const deployer = secp256k1.getPublicKey(priv, false);
+    const hashed = blake.blake2b(deployDataProtobufSerialize(deployData), undefined, 32);
+    // `prehash: false` is load-bearing, not decoration: since v2 `@noble/curves` hashes its input
+    // with SHA-256 before signing by default, and RChain signs the blake2b256 digest of the
+    // protobuf itself. Measured: without it the signature verifies against `sha256(digest)` and no
+    // node accepts it. The DER encoding and the low-S canonical form are noble's defaults here,
+    // matching the `{ canonical: true }` this replaced, so the wire format is unchanged.
+    const sig = secp256k1.sign(hashed, priv, { prehash: false, format: "der" }) as Uint8Array;
 
     return {
         data: toDeployRequestData(deployData),

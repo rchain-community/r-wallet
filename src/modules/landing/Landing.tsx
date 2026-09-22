@@ -25,7 +25,7 @@ export function Landing() {
     let [revealed, set_revealed] = useState(false);
 
     async function detect_eth() {
-        const {ethDetected} = await import("../../../vendored/@tgrospic/rnode-http-js/src");
+        const {ethDetected} = await import("../../utils/metamask");
         set_has_metamask(ethDetected);
 
         if (ethDetected) {

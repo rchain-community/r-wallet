@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import { defineConfig, Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import svgr from "vite-plugin-svgr";
-import { nodePolyfills } from "vite-plugin-node-polyfills";
 import { spawn } from "node:child_process";
 import tsconfigPaths from "vite-tsconfig-paths";
 
@@ -42,9 +41,6 @@ export default defineConfig({
         tsconfigPaths(),
         react(),
         svgr(),
-        nodePolyfills({
-            include: ["stream", "util", "crypto", "vm"],
-        })
     ],
 });
 

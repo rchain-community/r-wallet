@@ -4,7 +4,7 @@
 **WYSIWYG rholang deployer**. It talks directly to a Rust RNode's HTTP API — no
 gRPC, no intermediate backend.
 
-- Stack: React 18, TypeScript 5, Vite 5, Tailwind 3, Monaco (`@monaco-editor/react`), react-router 6.
+- Stack: React 18, TypeScript 5, Vite 6, Tailwind 3, Monaco (`@monaco-editor/react`), react-router 7.
 - Runtime targets: the node's **public HTTP API** (in-container `40403`) and **admin HTTP API** (`40405`).
 
 ---
@@ -81,7 +81,7 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 | `deploy(base, signed)` | `POST /api/deploy` | `DeployRequest` | JSON string `"Success!\nDeployId is: <hex>"` → returns hex |
 | `deployStatus(base, id)` | `GET /api/v1/deploy-status/:id` | — | `DeployExecStatus` |
 | `propose(adminBase)` | `POST /api/propose` | none | JSON string `"Success! Block <hash> …"` |
-| `dataAtName(base, name, depth)` | `POST /api/data-at-name` | `{ name: RhoUnforg, depth }` | `DataAtNameResponse { exprs, length }` |
+| `dataAtName(base, name, depth)` | `POST /api/data-at-name` | `{ name: <RhoUnforg, enveloped>, depth }` | `DataAtNameResponse { exprs, length }` |
 | `getBlock(base, hash)` | `GET /api/block/:hash` | — | `BlockInfo { blockInfo, deploys }` |
 | `faucetRequest(base, address)` | `POST /api/faucet` | `{ address }` | `FaucetResponse { deployId, amount, to }` |
 | `getCapabilities(base)` | `GET /api/v1/capabilities` | — | `NodeCapabilities { autopropose, proposeOnDeploy, manualPropose, adminHttp, devMode, faucet }` |
@@ -96,8 +96,16 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 
 ### Wire facts (don't deviate)
 
-- Serde enums are **externally tagged**: `ExprInt(42)` → `{"ExprInt":42}`,
-  `UnforgDeploy(x)` → `{"UnforgDeploy":"<hex>"}` (no `{data}` wrapper).
+- Serde enums are **externally tagged**, and each variant's payload is a **field-struct named
+  `data`**: `ExprInt(42)` → `{"ExprInt":{"data":42}}`, `UnforgDeploy(x)` →
+  `{"UnforgDeploy":{"data":"<hex>"}}`. This is the reference (Scala) node's shape as well —
+  `JsonSchemaDerivation` declares `final case class ExprInt(data: Long)` and serializes the field —
+  so the envelope is the contract, not a quirk of this port. `src/api/rho-json.ts` reads either form
+  (`unwrap_payload`), because an early revision of the port emitted the bare one; an `ExprMap`
+  payload is a JSON **object** (keys in canonical sorted order), with the early pair-array form
+  still accepted. The **request** side is enveloped too: a bare
+  `{"UnforgDeploy":"<hex>"}` is rejected with `expected struct Data`, which `envelope_payload`
+  handles.
 - `deploy` / `propose` return a **JSON-encoded string** (axum `Json<String>`),
   so read `res.json` (a string), not `res.text`.
 - `DeployExecStatus` is externally tagged:
@@ -224,14 +232,21 @@ compatible (see the interop note below).
 
 - **CORS**: the admin API (`propose`) only sends permissive CORS under
   `--api-enable-devnet-cors`. The devnet sets this; a custom node may not.
-- **Node ESM / CJS interop**: `blakejs` and `elliptic` use
-  `module.exports = { … }` with values Node's ESM loader can't statically detect,
-  so they're imported as **defaults** (`import blake from "blakejs"`,
-  `import elliptic from "elliptic"`), and `blockchain.ts`'s `module_proxy` falls
-  back to `.default`. Keep this pattern if you add CJS deps used by the test.
-- **`vendored/`** holds the old Scala-era `@tgrospic/rnode-http-js` client. It is
-  no longer used for deploy/transfer/explore; only MetaMask eth-detection still
-  reaches into it (`src/utils/blockchain.ts`).
+- **Node ESM / CJS interop**: `blakejs` uses `module.exports = { … }` with values
+  Node's ESM loader can't statically detect, so it's imported as a **default**
+  (`import blake from "blakejs"`) and `blockchain.ts`'s `module_proxy` falls back to
+  `.default`. Keep this pattern if you add CJS deps used by the test. The crypto
+  libraries (`@noble/curves`, `@scure/bip39`, `@ethereumjs/wallet`) are real ESM and
+  are imported normally.
+- **Signing**: `src/api/sign.ts` signs with `@noble/curves`, and every `sign`/`verify`
+  passes `{ prehash: false }` — since v2 the library SHA-256s its input by default,
+  while RChain signs the `blake2b256` digest of the protobuf itself. Drop that flag
+  and the wallet produces valid signatures over the wrong digest, which every node
+  rejects (see the `test:unit` recovery assertion, and the note in AGENTS.md).
+- **`vendored/`** holds the old Scala-era `@tgrospic/rnode-http-js` client, kept as
+  reference. Nothing imports it: MetaMask detection lives in `src/utils/metamask.ts`,
+  because importing that client's index pulled unmaintained `elliptic`/
+  `ethereumjs-util` into the browser bundle.
 - **Don't put the deployer key in the wallet** — the devnet faucet signs
   server-side; the wallet discovers the faucet (and gating) from the node's
   `GET /api/v1/capabilities`, not from hardcoded flags.

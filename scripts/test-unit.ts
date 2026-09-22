@@ -1,7 +1,7 @@
 // Pure unit tests for the wallet's logic — no devnet required.
 // Run with: npm run test:unit
 
-import elliptic from "elliptic";
+import { secp256k1 } from "@noble/curves/secp256k1.js";
 import blake from "blakejs";
 import { deployDataProtobufSerialize, signDeploy, decodeBase16 } from "../src/api/sign";
 import { deploy, propose, getShards, runTxn, getTxn, getTxnList, dataAtName } from "../src/api/client";
@@ -11,6 +11,8 @@ import { snippets, snippet_apply, snippet_meta } from "../src/modules/wallet/dep
 import { tx_list, add_tx, refresh_tx_states } from "../src/utils/transactions";
 import { PLAYGROUND_ACCOUNTS, pick_random_account } from "../src/config/playground";
 import type { DeployData, DeployRequest } from "../src/api/types";
+
+const hex_of = (bytes: Uint8Array) => Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 
 const DEPLOYER_PRIV = "a68a6e6cca30f81bd24a719f3145d20e8424bd7b396309b0708a16c7d8000b76";
 const DEPLOYER_ADDR = "11112VYAt8rUGNRRZX3eJdgagaAhtWTK8Js7F7X5iqddMVqyDTtYau";
@@ -41,11 +43,30 @@ async function main() {
     check(/^04[0-9a-f]{128}$/.test(signed.deployer), "deployer is a 65-byte uncompressed pubkey");
     check(/^30[0-9a-f]+$/.test(signed.signature), "signature is a DER hex string");
 
-    // Verify the signature against the derived public key (recompute the hash).
-    const ec = new elliptic.ec("secp256k1");
-    const key = ec.keyFromPublic(signed.deployer, "hex");
-    const hashed = blake.blake2bHex(deployDataProtobufSerialize(signed.data), undefined, 32);
-    check(key.verify(hashed, signed.signature), "signature verifies (secp256k1 over blake2b256(protobuf))");
+    // Verify the signature against the derived public key (recompute the hash), and — the stronger
+    // assertion — recover the signer's public key from the signature and require it to be the
+    // deployed `deployer`. Recovery pins the digest that was signed, so a signature over the wrong
+    // message cannot pass by verifying against a key derived from the same wrong-message logic.
+    const hashed = blake.blake2b(deployDataProtobufSerialize(signed.data), undefined, 32);
+    check(
+        secp256k1.verify(decodeBase16(signed.signature), hashed, decodeBase16(signed.deployer), { prehash: false, format: "der" }),
+        "signature verifies (secp256k1 over blake2b256(protobuf))"
+    );
+    // Recover the signer's key from the signature + digest, over all four recovery bits, and require
+    // that it is the key the deploy names. This pins the digest that was actually signed, which is
+    // what `prehash` gets wrong when it is left at noble's default.
+    const parsed = secp256k1.Signature.fromBytes(decodeBase16(signed.signature), "der");
+    const recovered_keys = [0, 1, 2, 3].flatMap(bit => {
+        try { return [hex_of(parsed.addRecoveryBit(bit).recoverPublicKey(hashed).toBytes(false))]; }
+        catch { return []; }
+    });
+    check(
+        recovered_keys.includes(signed.deployer),
+        `a recovery bit reproduces the deploying key (${recovered_keys.length} candidate(s))`
+    );
+    // The authoritative check is not in this file: the node refuses a deploy whose signature does
+    // not verify. `npm run test:api` signs real deploys, and every case of the acceptance suite
+    // (`scripts/acceptance.sh`) signs one, so a signature over the wrong digest fails there loudly.
 
     // The critical shardId fix: field 11 must be written (tag byte 0x5a).
     const serialized = Array.from(deployDataProtobufSerialize(dd));
@@ -63,20 +84,22 @@ async function main() {
         Array.isArray(signedAttached.data.attachments) && signedAttached.data.attachments[0] === "deadbeef",
         "DeployRequest body carries attachments"
     );
-    const attachedKey = ec.keyFromPublic(signedAttached.deployer, "hex");
-    const attachedHash = blake.blake2bHex(
+    const attachedHash = blake.blake2b(
         deployDataProtobufSerialize({ ...dd, attachments: ["deadbeef"] }),
         undefined,
         32
     );
-    check(attachedKey.verify(attachedHash, signedAttached.signature), "attachment deploy signature verifies");
-    const tamperedHash = blake.blake2bHex(
+    check(
+        secp256k1.verify(decodeBase16(signedAttached.signature), attachedHash, decodeBase16(signedAttached.deployer), { prehash: false, format: "der" }),
+        "attachment deploy signature verifies"
+    );
+    const tamperedHash = blake.blake2b(
         deployDataProtobufSerialize({ ...dd, attachments: ["cafebabe"] }),
         undefined,
         32
     );
     check(
-        !attachedKey.verify(tamperedHash, signedAttached.signature),
+        !secp256k1.verify(decodeBase16(signedAttached.signature), tamperedHash, decodeBase16(signedAttached.deployer), { prehash: false, format: "der" }),
         "a tampered/stripped attachment fails signature verification"
     );
 
@@ -97,6 +120,36 @@ async function main() {
     check(!(await bc.is_valid_rev_address("not-a-rev-address")), "is_valid_rev_address rejects garbage");
     check((await bc.get_account(DEPLOYER_PRIV))?.revAddr === DEPLOYER_ADDR, "get_account resolves a private key");
     check((await bc.get_account(DEPLOYER_ADDR))?.revAddr === DEPLOYER_ADDR, "get_account resolves a REV address");
+
+    // 2b. keystore round-trip and backwards compatibility.
+    // The fixture was produced by the library this app used *before* the crypto migration, so it
+    // fails if the successor ever stops reading files users already exported. The password is
+    // "correct horse"; the key inside is the devnet deployer, so the address is a known constant.
+    const legacy_keystore = {
+        version: 3,
+        id: "6aa6e875-0309-4491-9e77-b7a0e6c20504",
+        address: "041e1eec23d118f0c4ffc814d4f415ac3ef3dcff",
+        crypto: {
+            ciphertext: "0fc8ac90b56adb2e7eadcbb9ec3ac4654f791068e942476744d2603d944b0985",
+            cipherparams: { iv: "fb35242764de834f83a61c68795cb3b2" },
+            cipher: "aes-128-ctr",
+            kdf: "scrypt",
+            kdfparams: {
+                dklen: 32,
+                salt: "78370c120990c9d526b07565f109c643f728dbe75e206615852f06037e414458",
+                n: 131072, r: 8, p: 1,
+            },
+            mac: "edaf266b91c595c280ae6fd1367d69a7ea656f5c1a5eef1aaf6cda54d040a20c",
+        },
+    };
+    const unlocked = await bc.get_account_from_keystore(legacy_keystore, "correct horse");
+    check(unlocked?.revAddr === DEPLOYER_ADDR, `a keystore from the previous crypto library still unlocks (${unlocked?.revAddr})`);
+    check((await bc.get_account_from_keystore(legacy_keystore, "wrong password")) === null, "a wrong keystore password unlocks nothing");
+
+    const written = await bc.keystore_json(DEPLOYER_PRIV, "round trip");
+    check(!!written && written.version === 3, "keystore_json writes a v3 keystore");
+    const reread = written ? await bc.get_account_from_keystore(written, "round trip") : null;
+    check(reread?.revAddr === DEPLOYER_ADDR, "a keystore written by this app unlocks to the same account");
 
     // 3. rholang templates
     const cb = rho.fn_check_balance(DEPLOYER_ADDR);

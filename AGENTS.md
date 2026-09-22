@@ -77,8 +77,12 @@ One convention in `client.ts`: `httpFetch(METHOD, path, body?) → ensureOk → 
 | `getTxn` | `GET /api/v1/txn/:txnId` (gateway only) |
 | `getTxnList` | `GET /api/v1/txn` (gateway only) |
 
-Wire facts: serde enums are **externally tagged** (`{"ExprInt":42}`,
-`{"UnforgDeploy":"<hex>"}`); `deploy`/`propose` return **JSON-encoded strings**;
+Wire facts: serde enums are **externally tagged** *and their payloads are field-structs*, so
+`ExprInt(42)` is `{"ExprInt":{"data":42}}` — measured on a live node, and the same shape the
+reference (Scala) node's `JsonSchemaDerivation` produces. `rhoExprToJson` unwraps it; the
+**request** side is enveloped too (`POST /api/data-at-name` rejects a bare
+`{"UnforgDeploy":"<hex>"}` with "expected struct Data"). `deploy`/`propose` return **JSON-encoded
+strings**;
 `DeployExecStatus` is `{ProcessedWithSuccess|ProcessedWithError|NotProcessed}`.
 `DeployData.attachments` (RCHIP #39) are **hex strings** and are **part of the
 signed protobuf** (field 12) — omit the field for an ordinary deploy.
@@ -100,13 +104,21 @@ signed protobuf** (field 12) — omit the field for an ordinary deploy.
 4. **No deployer private key in the wallet** — the devnet faucet signs server-side;
    the wallet discovers the faucet and gating from `GET /api/v1/capabilities`, not
    hardcoded flags.
-5. **Node-ESM interop** — `blakejs`/`elliptic` are CJS with undetectable named
-   exports, so import them as **defaults**; `blockchain.ts`'s `module_proxy`
-   falls back to `.default`. Preserve this for anything the `tsx` test imports.
+5. **Node-ESM interop** — `blakejs` is CJS with undetectable named exports, so
+   import it as a **default**; `blockchain.ts`'s `module_proxy` falls back to
+   `.default`. Preserve this for anything the `tsx` test imports. (`@noble/curves`
+   and `@ethereumjs/wallet` are real ESM — import them normally.)
+5b. **`@noble/curves` needs `{ prehash: false }`** on every `sign`/`verify` in the
+   deploy path. Since v2 it SHA-256s the input by default, and RChain signs the
+   `blake2b256` digest of the protobuf itself — leave the default and every deploy
+   fails signature verification, silently, at the node.
 6. **Branding** — use `BRAND.name` / `BRAND.ticker` from `src/config/branding.ts`;
    don't hardcode "R Wallet"/"REV"/"GOR".
-7. **`vendored/`** is the legacy Scala client — only MetaMask eth-detection still
-   touches it. Don't add new imports from it.
+7. **`vendored/`** is the legacy Scala client, kept as reference. **Nothing imports
+   it**: its only live use was MetaMask eth-detection, which is now
+   `src/utils/metamask.ts`. Don't add imports from it — importing its index pulled
+   `elliptic` and `ethereumjs-util` (both unmaintained, both with unfixable
+   advisories) into the bundle for a two-line provider check.
 8. **Snippet metadata** — template help text lives in `snippet_meta` (in
    `src/modules/wallet/deploy/snippets.ts`): a `description` per snippet plus
    optional `fieldHelp`/`defaults`. The editor's EXPLAIN modal renders them. Add

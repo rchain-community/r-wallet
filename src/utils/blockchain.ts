@@ -1,23 +1,18 @@
 // shortname: bc
+import { secp256k1 } from "@noble/curves/secp256k1.js";
+import { ethDetected, ethereumAddress } from "./metamask";
 import { generateMnemonic, mnemonicToSeed, validateMnemonic } from "@scure/bip39";
 import { wordlist } from '@scure/bip39/wordlists/english';
 import { PublicWallet, PrivateWallet, MetaMaskWallet } from "./utils";
 
-const _ethereumjs_wallet = import("ethereumjs-wallet");
-const _Wallet = _ethereumjs_wallet.then(w => w.default);
-const _HDKey = _ethereumjs_wallet.then(w => w.hdkey);
+// `@ethereumjs/wallet` is the maintained successor of `ethereumjs-wallet`, which is unmaintained
+// and pins a vulnerable `uuid@8`. The API this file uses is unchanged; in v10 `hdkey` exports the
+// `EthereumHDKey` class that the call sites below already derive through.
+const _ethereumjs_wallet = import("@ethereumjs/wallet");
+const _Wallet = _ethereumjs_wallet.then(w => w.Wallet);
+const _HDKey = _ethereumjs_wallet.then(w => w.hdkey.EthereumHDKey);
 
 const prefix = { coinId: "000000", version: "00" } as const;
-
-let _secp256k1: import("elliptic").ec | null = null;
-async function secp256k1(): Promise<import("elliptic").ec> {
-	if (_secp256k1 == null) {
-		const mod = (await import("elliptic")) as any;
-		const ec = (mod.default ?? mod).ec;
-		_secp256k1 = new ec("secp256k1");
-	}
-	return _secp256k1!;
-}
 
 type AsyncModule<PKG extends {}> = {
 	[KEY in keyof PKG]:
@@ -44,7 +39,32 @@ function module_proxy<K extends {}>(imported_package: Promise<K>): AsyncModule<K
 	) as AsyncModule<K>;
 }
 
-const eth_util = module_proxy(import("ethereumjs-util"));
+// Replaces `ethereumjs-util`, of which this file used exactly four functions: `toBuffer`,
+// `bufferToHex`, `isValidPrivate` and `addHexPrefix` — hex/bytes conversions, not cryptography. The
+// one security-relevant check, `isValidPrivate`, delegates to the curve library rather than
+// restating the curve order here. `Uint8Array`, not `Buffer`: the browser bundle no longer carries
+// Node polyfills, so a stray `Buffer` would fail at run time in the app.
+function hex_of(bytes: Uint8Array): string {
+	return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function to_buffer(value: string | Uint8Array): Uint8Array {
+	if (typeof value !== "string") { return value; }
+	const hex = value.startsWith("0x") ? value.slice(2) : value;
+	if (hex.length % 2 !== 0 || /[^0-9a-fA-F]/.test(hex)) {
+		throw new Error(`expected a hex string, got ${value}`);
+	}
+	const out = new Uint8Array(hex.length / 2);
+	for (let i = 0; i < out.length; i++) { out[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16); }
+	return out;
+}
+
+const eth_util = {
+	toBuffer: to_buffer,
+	bufferToHex: (bytes: Uint8Array) => "0x" + hex_of(bytes),
+	isValidPrivate: (bytes: Uint8Array) => secp256k1.utils.isValidSecretKey(bytes),
+	addHexPrefix: (hex: string) => (hex.startsWith("0x") ? hex : "0x" + hex),
+};
 const bs58 = module_proxy(import("bs58"));
 const jssha = module_proxy(import("js-sha3"));
 const blakejs = module_proxy(import("blakejs"));
@@ -92,13 +112,16 @@ export async function create_keystore(password: string) {
 	} as KeystoreFile;
 }
 
-export async function generate_keystore(pkey: string, password: string) {
+// Exported so the keystore format can be round-tripped in a test: `generate_keystore` below wraps
+// this in a Blob for the browser, which Node cannot read back, and the write path otherwise has no
+// test at all — the gap that would make a library migration of it undetectable.
+export async function keystore_json(pkey: string, password: string): Promise<Record<string, any> | null> {
 	const Wallet = await _Wallet;
 
 	if (!password || password === '') { return null; }
 
 	if (!pkey.startsWith("0x")) { pkey = "0x" + pkey; }
-	let buf: Buffer;
+	let buf: Uint8Array;
 	try {
 		buf = await eth_util.toBuffer(pkey);
 	} catch (err) {
@@ -107,10 +130,18 @@ export async function generate_keystore(pkey: string, password: string) {
 	}
 
 	const wallet = Wallet.fromPrivateKey(buf);
-	const res = await wallet.toV3(password, {
+	return await wallet.toV3(password, {
 		kdf: 'scrypt',
 		n: 131072
 	});
+}
+
+export async function generate_keystore(pkey: string, password: string) {
+	const res = await keystore_json(pkey, password);
+	if (!res) { return null; }
+
+	const Wallet = await _Wallet;
+	const wallet = Wallet.fromPrivateKey(await eth_util.toBuffer(pkey));
 
 	return {
 		blobUrl: create_blob(res),
@@ -174,8 +205,6 @@ async function get_account_from_eth(eth_addr: string): Promise<PublicWallet | nu
 }
 
 export async function get_account_from_metamask() {
-	const { ethDetected, ethereumAddress } = await import("../../vendored/@tgrospic/rnode-http-js/src");
-
 	if (!ethDetected) { return null; }
 	try {
 		let eth_addr = await ethereumAddress();
@@ -226,8 +255,11 @@ export async function get_account_from_private_key(private_key: string): Promise
 	private_key = private_key.replace(/^0x/, "");
 	if (private_key.length !== 64) { return null; }
 
-	const key = (await secp256k1()).keyFromPrivate(private_key);
-	const pub_key = key.getPublic('hex');
+	// Uncompressed (65-byte, `04`-prefixed) public key, bare hex — the shape
+	// `get_account_from_public_key` expects. Noble's output is byte-identical to the previous
+	// library's `key.getPublic('hex')`; the devnet's own funded address is the proof (test:unit
+	// pins the derived accounts, and devnet.sh's constant matches).
+	const pub_key = hex_of(secp256k1.getPublicKey(to_buffer(private_key), false));
 	const addr = await get_account_from_public_key(pub_key);
 
 	if (!addr) { return null; }
@@ -275,8 +307,7 @@ export function is_valid_mnemonic(phrase: string) {
 }
 
 export async function create_account() {
-	const key = (await secp256k1()).genKeyPair();
-	const private_key = key.getPrivate('hex');
+	const private_key = hex_of(secp256k1.utils.randomSecretKey());
 	return await get_account_from_private_key(private_key);
 }
 
