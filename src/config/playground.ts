@@ -16,7 +16,11 @@ export interface PlaygroundAccount {
 }
 
 /** Network the balances live on — shown in the UI so nobody expects funds elsewhere. */
-export const PLAYGROUND_NETWORK = "Rhobot testnet";
+// These accounts are genesis-funded on BOTH rhobot chains (the playground and
+// the testnet), so the label names the operator rather than one chain —
+// "Rhobot testnet" would have been wrong on the playground, which is where the
+// app points by default.
+export const PLAYGROUND_NETWORK = "Rhobot";
 
 export const PLAYGROUND_ACCOUNTS: PlaygroundAccount[] = [
 	{

@@ -21,8 +21,14 @@ export const MASTER_URI: Record<string, string> = {
      * its operator redeploys from a genesis-carrying revision, like every other chain.
      */
     rhobot: "rho:id:s5k4ghyjppnehrwk8s3fria5febwck3ekpbuki9wdm9grbmbdiy8js",
-    /** Never bootstrapped upstream; left empty rather than send a placeholder id. */
-    testnet: "",
+    /**
+     * testnet.rhobot.net carries the governance set at GENESIS, so it uses the
+     * port constant. Verified against the live chain: a lookup of
+     * PORT_READ_CAP there returns a directory of
+     * `Directory, Echo, GetMe, Inbox, Issue, Kudos, Log, Roll, SendThem`,
+     * while the legacy rhobot uri resolves but reads empty.
+     */
+    testnet: PORT_READ_CAP,
     mainnet: "",
 };
 
