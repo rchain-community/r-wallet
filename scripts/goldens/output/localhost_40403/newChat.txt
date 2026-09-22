@@ -1,1 +1,21 @@
-[]
+[
+  "sent...",
+  "sent...",
+  [
+    "Chat",
+    "<HEX>"
+  ],
+  [
+    "MCA",
+    "<HEX>"
+  ],
+  [
+    "chatAdmin",
+    "test",
+    {
+      "isend": "<HEX>",
+      "pub": "<HEX>",
+      "sub": "<HEX>"
+    }
+  ]
+]

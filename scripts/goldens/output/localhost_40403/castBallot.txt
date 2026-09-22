@@ -1,1 +1,9 @@
-[]
+[
+  [
+    "newvotes are",
+    1
+  ],
+  [
+    "oldvotes were"
+  ]
+]

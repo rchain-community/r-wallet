@@ -1,1 +1,15 @@
-[]
+[
+  [
+    "delegate"
+  ],
+  [
+    "vote"
+  ],
+  {
+    "name": "<RHO-ID>",
+    "proposals": [
+      1,
+      2
+    ]
+  }
+]

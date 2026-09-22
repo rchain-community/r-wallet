@@ -1,1 +1,20 @@
-[]
+[
+  [
+    "mystuff",
+    {
+      "claimed": true,
+      "dictionary": {
+        "grant": "<HEX>",
+        "read": "<HEX>",
+        "write": "<HEX>"
+      },
+      "inbox": {
+        "URI": "<RHO-ID>",
+        "dict": "<HEX>",
+        "inbox": "<HEX>",
+        "peek": "<HEX>",
+        "receive": "<HEX>"
+      }
+    }
+  ]
+]

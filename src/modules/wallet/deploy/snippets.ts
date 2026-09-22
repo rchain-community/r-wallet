@@ -145,11 +145,13 @@ export const snippets = {
             "  lookup(`rho:registry:lookup`),\n" +
             "  ret\n" +
             "  in {\n" +
-            // The feature's log channel must be a *repeated drain*: getMe logs multi-element lines
-            // (`["getMe", you, "everyone size", …]`, `["creating your stuff", you]`) and a
-            // one-datum-at-a-time channel like `rho:io:stdout` cannot take them, so the contract
-            // errors mid-flow and never reaches its reply — indistinguishable from a stall, and
-            // silent, which is why this looked like a node problem for so long.
+            // Draining the feature's log is the polite thing to do — `getMe` logs multi-element
+            // lines (`["getMe", you, "everyone size", …]`, `["creating your stuff", you]`) and this
+            // snippet does not read them — but it is *not* load-bearing, and an earlier note here
+            // was wrong to say a one-datum sink "cannot take them": `rho:io:stdout` takes a list as
+            // one datum and is persistent, which is how the genesis run's own log lines are visible
+            // at all. The stall that looked like a node problem for so long was the node's
+            // `if`-normalization defect (AUDIT C21 in RNodeRust) on the line above `createMe`.
             "    for (@_line <= logCh) { Nil } |\n" +
             "    lookup!(ReadcapURI, *masterLookupCh) |\n" +
             "    for (lookup_Master <- masterLookupCh) {\n" +
@@ -437,13 +439,13 @@ export const snippets = {
             "  deployerId(`rho:rchain:deployerId`),\n" +
             "  ch\n" +
             "  in {\n" +
-            '    for(@{"peek": *peek, "URI": uri ..._} <<- @[*deployerId, lockerTag]) {\n' +
+            '    for(@{"peek": *peek, "URI": uri, ..._} <<- @[*deployerId, lockerTag]) {\n' +
             '      deployId!({"URI": uri}) |\n' +
             "      new lockerCh, ret, ret1, ret2, ret3, loop in {\n" +
             '        peek!("Group", group, *ret) |\n' +
             '        peek!("issue", issue, *ret1) |\n' +
             '        for ( @[{"read": *read, ..._}, ..._] <- ret;  @[{"admin": *admin, ..._}, ..._] <- ret1 ) {\n' +
-            '          stdout!(["adding users") |\n' +
+            '          stdout!(["adding users"]) |\n' +
             "          contract loop ( @map ) = {\n" +
             "            match  map {\n" +
             "              {} => Nil\n" +
@@ -939,16 +941,21 @@ export const snippets = {
             "  deployerId(`rho:rchain:deployerId`),\n" +
             "  ch\n" +
             "  in {\n" +
-            '    for(@{"peek": *peek, "URI": uri ..._} <<- @[*deployerId, lockerTag]) {\n' +
+            '    for(@{"peek": *peek, "URI": uri, ..._} <<- @[*deployerId, lockerTag]) {\n' +
             '      deployId!({"URI": uri}) |\n' +
             '      if (type == "" ) {\n' +
             "        peek!(*deployId)\n" +
             '      } else if (subtype == "" ) {\n' +
             "        peek!(type,*deployId)\n" +
             "      }  else {\n" +
-            "        peek!(type,subtype,*ch)\n" +
-            "        for ( @(capability: *cap, ..._) <- ch ) {\n" +
-            "          cap!(method,arg,deployId)\n" +
+            "        peek!(type,subtype,*ch) |\n" +
+            // `peek(type, subtype, ret)` answers with the *tail* of the message list (Inbox.rho's
+            // `{[=*type, =*subtype, ...rest] | tail} => ret!(rest)`), so the first element is the
+            // message map — the same shape `addGroupToIssue` destructures.
+            '        for ( @[{"capability": *cap, ..._}, ..._] <- ch ) {\n' +
+            // `deployId` is a *name* (system processes bind name-sorted), so passing its value needs
+            // the deref — as the two branches above already do (`peek!(*deployId)`).
+            "          cap!(method,arg,*deployId)\n" +
             "        }\n" +
             "      }\n" +
             "    }\n" +

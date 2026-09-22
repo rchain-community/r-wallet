@@ -1,1 +1,31 @@
-[]
+[
+  "Test of redeploy",
+  "creating ballot",
+  "sent...",
+  "sent...",
+  [
+    "Issue",
+    "<HEX>"
+  ],
+  [
+    "MCA",
+    "<HEX>"
+  ],
+  [
+    "bCh",
+    "<HEX>",
+    "<HEX>"
+  ],
+  [
+    "issue",
+    "test",
+    {
+      "admin": "<HEX>",
+      "tally": "<HEX>"
+    }
+  ],
+  {
+    "admin": "<HEX>",
+    "gives right to vote": "<HEX>"
+  }
+]

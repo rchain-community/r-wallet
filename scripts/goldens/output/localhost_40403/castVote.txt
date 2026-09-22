@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "unknown proposal": "test",
+    "valid proposals": [
+      1,
+      2
+    ]
+  }
+]

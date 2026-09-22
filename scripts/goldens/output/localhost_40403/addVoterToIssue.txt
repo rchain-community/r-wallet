@@ -1,1 +1,6 @@
-[]
+[
+  {
+    "admin": "<HEX>",
+    "gives right to vote": "<HEX>"
+  }
+]

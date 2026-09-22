@@ -1,1 +1,7 @@
-[]
+[
+  [
+    "<RHO-ID>",
+    "delegates to",
+    "<RHO-ID>"
+  ]
+]

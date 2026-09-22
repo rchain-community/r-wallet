@@ -4,8 +4,12 @@
 //   docker logs devnet-bootstrap 2>&1 | grep -E "stage:|getting deployer|got pub key|got revaddr|creating"
 //
 // Two things it exists to get right, both of which cost me real time:
-//   1. the feature's log channel is a *repeated drain* (`<=`), never rho:io:stdout — getMe logs
-//      multi-element lines and a one-datum sink errors mid-flow, silently;
+//   1. the feature's log channel should be *drained* (`<=`) if you want the deploy's own result
+//      channel to stay readable — but the drain is not load-bearing: `rho:io:stdout` takes a list
+//      as one datum and is persistent, so pointing the log at stdout works too (and is how the
+//      genesis run's lines are visible at all). An earlier note here claimed stdout "errors
+//      mid-flow"; it does not. The stall that looked like a node problem was the node's
+//      `if`-normalization defect (AUDIT C21 in RNodeRust), one line above `createMe`;
 //   2. it runs as a deploy, so `rho:rchain:deployerId` is a real public key that
 //      RevAddress!("fromPublicKey", …) can derive from.
 new rl(`rho:registry:lookup`), deployerId(`rho:rchain:deployerId`), out(`rho:io:stdout`),

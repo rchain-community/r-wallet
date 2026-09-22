@@ -1,1 +1,30 @@
-[]
+[
+  "creating ballot",
+  "sent...",
+  "sent...",
+  [
+    "Ballot",
+    "<HEX>"
+  ],
+  [
+    "Ballot",
+    "test",
+    {
+      "admin": "<HEX>",
+      "tally": "<HEX>"
+    }
+  ],
+  [
+    "MCA",
+    "<HEX>"
+  ],
+  [
+    "bCh",
+    "<HEX>",
+    "<HEX>"
+  ],
+  {
+    "admin": "<HEX>",
+    "gives right to vote": "<HEX>"
+  }
+]
