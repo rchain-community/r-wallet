@@ -16,11 +16,15 @@ export const MASTER_URI: Record<string, string> = {
     /** A chain built from a genesis-carrying revision of the node — the constant above. */
     localhost: PORT_READ_CAP,
     /**
-     * Rhobot still runs the pre-genesis build, so its chain carries a master contract deployed by the
-     * old runtime bootstrap and needs *that* deployment's URI. It becomes `PORT_READ_CAP` the moment
-     * its operator redeploys from a genesis-carrying revision, like every other chain.
+     * The rholang playground. It used to need its own runtime-bootstrapped uri
+     * (`rho:id:s5k4ghy…`), but its chain was rebuilt on 2026-09-22 from a
+     * genesis-carrying revision, so it takes the port constant like every
+     * other such chain — exactly the redeploy this comment used to anticipate.
+     * Verified on the rebuilt chain: PORT_READ_CAP returns
+     * `Directory, Echo, GetMe, Inbox, Issue, Kudos, Log, Roll, SendThem`,
+     * while the old uri resolves but reads empty.
      */
-    rhobot: "rho:id:s5k4ghyjppnehrwk8s3fria5febwck3ekpbuki9wdm9grbmbdiy8js",
+    rhobot: PORT_READ_CAP,
     /**
      * testnet.rhobot.net carries the governance set at GENESIS, so it uses the
      * port constant. Verified against the live chain: a lookup of
