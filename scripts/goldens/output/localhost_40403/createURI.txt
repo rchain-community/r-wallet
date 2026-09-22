@@ -1,1 +1,8 @@
-TIMEOUT after 30000ms (the contract did not return)
+[
+  [
+    "URI",
+    "<RHO-ID>",
+    "Obj",
+    1
+  ]
+]

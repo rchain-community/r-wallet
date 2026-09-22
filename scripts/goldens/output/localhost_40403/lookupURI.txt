@@ -2,6 +2,7 @@
   [
     "URI",
     "<RHO-ID>",
-    "Obj"
+    "Obj",
+    "<HEX>"
   ]
 ]

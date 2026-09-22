@@ -1,1 +1,3 @@
-TIMEOUT after 30000ms (the contract did not return)
+[
+  "deadbeef"
+]

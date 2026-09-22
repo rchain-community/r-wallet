@@ -58,6 +58,13 @@ interface Case {
      * to catch (the governance contracts returning `[]` while their flows silently stall).
      */
     returns_nothing?: string;
+    /**
+     * The snippet's own source says this term must never be deployed (a `// … use EXPLORE` marker).
+     * Asserted, not trusted: `needs_deploy` promotes on a substring match over the code text, so a
+     * future snippet that merely *mentions* a deploy-time channel would otherwise be turned into a
+     * chain write without anyone deciding that.
+     */
+    explore_only?: string;
 }
 
 // `explore-deploy` does not bind the deploy-time system channels, so any contract that reads
@@ -138,6 +145,7 @@ const CASES: Record<string, Case> = {
     lookupURI: {
         op: "explore",
         note: "needs a rho:id that is actually registered on the target node",
+        explore_only: "the snippet's own source says `// always use EXPLORE`",
     },
     createURI: { op: "explore" },
     doit: { op: "explore" },
@@ -145,7 +153,10 @@ const CASES: Record<string, Case> = {
         op: "deploy",
         note: "attachments cannot ride explore-deploy, so this needs the deploy path",
     },
-    towers: { op: "explore" },
+    towers: {
+        op: "explore",
+        explore_only: "the snippet's own source says `// towers of hanoi - use EXPLORE`",
+    },
 };
 
 // Referenced by the deploy case; kept here so the attachment is spelled out.
@@ -389,7 +400,7 @@ async function check_process_api_schema(): Promise<void> {
     //    wallet's own correctness depends on it and nothing else pins it.
     const schema_partial_map =
         'new cap, deployId(`rho:rchain:deployId`), ch in {\n' +
-        '  ch!({"grant": cap, "read": cap, "write": cap}) |\n' +
+        '  ch!({"grant": *cap, "read": *cap, "write": *cap}) |\n' +
         '  for (@{"read": *m, ..._} <<- ch) { deployId!(["partial-map-3key", "matched"]) }\n' +
         '}';
     const partial_map = await run_bounded("schema:partial-map", schema_partial_map, "deploy");
@@ -399,6 +410,16 @@ async function check_process_api_schema(): Promise<void> {
             + "(node: AUDIT.md C20 — the remainder never absorbs a map entry, which gates "
             + "MemberDirectory.rho:15 and so the whole governance family)"
     );
+}
+
+/**
+ * Why a case's output must not be recorded as a golden, or null when it may be. See the call site:
+ * a golden is a node answer, and neither "the harness gave up" nor "the term never compiled" is one.
+ */
+function unrecordable(text: string): string | null {
+    if (/^TIMEOUT after /m.test(text)) return "the case did not return (timeout)";
+    if (/Parsing error|free variables|process context/.test(text)) return "the term did not compile";
+    return null;
 }
 
 async function main() {
@@ -421,6 +442,17 @@ async function main() {
     const unclassified = (Object.keys(snippets) as Array<keyof typeof snippets>)
         .filter(k => !(k in CASES));
     check(unclassified.length === 0, `every snippet is classified (unclassified: ${unclassified.join(", ") || "none"})`);
+
+    // A term its own source says must not be deployed never is. This is the invariant the whole
+    // incident turned on: `towers` is explore-only, and trusting a comment to keep it that way is
+    // what almost let me accept that my harness had submitted it as a chain write.
+    for (const [name, c] of Object.entries(CASES)) {
+        if (!c.explore_only) continue;
+        check(
+            effective_op(name) === "explore" && !needs_deploy(name as keyof typeof snippets),
+            `${name}: explore-only in its source and stays on explore (${c.explore_only})`
+        );
+    }
 
     if (RECORD) fs.mkdirSync(GOLDEN_DIR, { recursive: true });
 
@@ -477,6 +509,17 @@ async function main() {
         }
 
         if (RECORD) {
+            // A golden must be the *node's* answer. A timeout is this harness giving up (the term may
+            // still be running on the node), and a parse error means the term never ran at all —
+            // neither is evidence about the contract, and recording one makes a broken environment
+            // look correct on the next compare run. That is exactly how an outage got committed as
+            // expected behaviour and produced minutes of results that meant nothing.
+            const refused = unrecordable(output);
+            if (refused) {
+                check(false, `${name} [${op_label}] NOT recorded: ${refused}`);
+                continue;
+            }
+
             fs.writeFileSync(golden_path, output);
             check(true, `${name} [${op_label}] recorded`);
             continue;

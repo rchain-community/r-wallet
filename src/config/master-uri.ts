@@ -1,38 +1,32 @@
-// The governance master read-capability URI, per network.
-//
-// This URI is NOT a constant in the old sense: it is the result of deploying the rgov contract
-// set (Kudos, Inbox, Directory, member directory/Roll, Issue, Echo, Log) and publishing a master
-// directory over them. The original project shipped one `MasterURI.<network>.json` per network
-// for exactly this reason, and the previous single hardcoded value was a leftover from an older
-// chain — which is why governance snippets stalled and returned `[]`.
-//
-// Fill an entry by running the bootstrap against that network:
-//   npx tsx scripts/bootstrap-rgov.ts --node <url>
-// which writes scripts/rgov-bootstrap.<host>.json and prints the master URI.
-
 import { built_in_nodes } from "../utils/globals";
 import { get_node_url } from "../utils/networks";
 
+/**
+ * The governance master read-capability URI — now a **constant of the port**, not of a chain.
+ *
+ * The rgov set is installed at genesis, and genesis content is signed with fixed keys and timestamps,
+ * so the read cap is the same value on every chain built from this port (the manifest and constants
+ * are in the node repo's `spec/GENESIS.md`). That is what removes the old per-chain bootstrapping: a
+ * fresh chain carries the governance contracts and this URI from block 0 — no deploy, no funding, and
+ * no provenance to get wrong, which is where the previous per-chain value led consumers astray.
+ */
+export const PORT_READ_CAP = "rho:id:wxc4mwdh7otq4fd6iuxt84inepssyz5tugojf7ao68dkh4ebbncy";
+
 export const MASTER_URI: Record<string, string> = {
+    /** A chain built from a genesis-carrying revision of the node — the constant above. */
+    localhost: PORT_READ_CAP,
     /**
-     * https://rnodeapi.rhobot.net — from the upstream rgov record
-     * (`rgov/src/MasterURI.rhobot.json`). Whether this chain still has the contract set behind it
-     * is what the two-step `GetMe` handshake settles; if it does not, re-bootstrap with
-     * `scripts/bootstrap-rgov.ts` and replace this value with the URI it prints.
+     * Rhobot still runs the pre-genesis build, so its chain carries a master contract deployed by the
+     * old runtime bootstrap and needs *that* deployment's URI. It becomes `PORT_READ_CAP` the moment
+     * its operator redeploys from a genesis-carrying revision, like every other chain.
      */
     rhobot: "rho:id:s5k4ghyjppnehrwk8s3fria5febwck3ekpbuki9wdm9grbmbdiy8js",
-    /**
-     * A local RNode devnet (`~/RNodeRust`, tools/devnet.sh). Bootstrapped with
-     * `scripts/bootstrap-rgov.ts` — the URI belongs to that chain and to no other, because it is
-     * the product of deploying the contract set there (see scripts/rgov-bootstrap.localhost_40403.json).
-     */
-    localhost: "rho:id:qka94d3rnrrjexur6tztdbr7hmmtqjnwfyyimjzidw5kwydhscqy",
-    /** Upstream ships placeholders here, never bootstrapped — left empty rather than send one. */
+    /** Never bootstrapped upstream; left empty rather than send a placeholder id. */
     testnet: "",
     mainnet: "",
 };
 
-/** The master URI for a network key, or "" when that network has not been bootstrapped. */
+/** The master URI for a network key, or "" when that network has no known governance set. */
 export function master_uri_for(network: string | undefined): string {
     if (!network) return "";
     return MASTER_URI[network] ?? "";
@@ -41,8 +35,8 @@ export function master_uri_for(network: string | undefined): string {
 /**
  * The master URI for a node URL, resolved through the built-in node table. Compare the *resolved*
  * URL: a local node keeps its port in a separate field (`url: "http://localhost"`, `port: 40403`),
- * so matching on `url` alone would never find `http://localhost:40403` and the local table entry
- * would be unreachable.
+ * so matching on `url` alone would never find `http://localhost:40403` and the local entry would be
+ * unreachable.
  */
 export function master_uri_for_url(url: string): string {
     const want = url.replace(/\/$/, "");

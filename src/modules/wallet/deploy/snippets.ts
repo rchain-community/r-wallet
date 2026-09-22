@@ -135,6 +135,7 @@ export const snippets = {
             "[ReadcapURI] => {\n" +
             "  new\n" +
             "  stdout(`rho:io:stdout`),\n" +
+            "  logCh,\n" +
             "  deployId(`rho:rchain:deployId`),\n" +
             "  deployerId(`rho:rchain:deployerId`),\n" +
             "  masterLookupCh,\n" +
@@ -144,13 +145,19 @@ export const snippets = {
             "  lookup(`rho:registry:lookup`),\n" +
             "  ret\n" +
             "  in {\n" +
+            // The feature's log channel must be a *repeated drain*: getMe logs multi-element lines
+            // (`["getMe", you, "everyone size", …]`, `["creating your stuff", you]`) and a
+            // one-datum-at-a-time channel like `rho:io:stdout` cannot take them, so the contract
+            // errors mid-flow and never reaches its reply — indistinguishable from a stall, and
+            // silent, which is why this looked like a node problem for so long.
+            "    for (@_line <= logCh) { Nil } |\n" +
             "    lookup!(ReadcapURI, *masterLookupCh) |\n" +
             "    for (lookup_Master <- masterLookupCh) {\n" +
             '      stdout!({"master-dictionary dictionary unforgeable": *lookup_Master}) |\n' +
             '      lookup_Master!("GetMe", *lookupCh) |\n' +
             "      for (GetMe <- lookupCh) {\n" +
             '        stdout!({"master-dictionary GetMe unforgeable": *GetMe}) |\n' +
-            "        GetMe!(*deployerId, *ret, *stdout) |\n" +
+            "        GetMe!(*deployerId, *ret, *logCh) |\n" +
             "        for (@(success, (claimed, mystuff)) <- ret) {\n" +
             '          stdout!(["getme returns", success, claimed, mystuff]) |\n' +
             "          if (claimed == false) {\n" +
