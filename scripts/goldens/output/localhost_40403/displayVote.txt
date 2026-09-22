@@ -1,10 +1,30 @@
 [
   [
+    "<RHO-ID>",
+    " -> ",
+    "<RHO-ID>",
+    "<HEX>"
+  ],
+  [
+    "delegate",
+    "<RHO-ID>"
+  ],
+  [
     "delegate"
   ],
   [
     "vote"
   ],
+  [
+    "vote"
+  ],
+  {
+    "name": "<RHO-ID>",
+    "proposals": [
+      1,
+      2
+    ]
+  },
   {
     "name": "<RHO-ID>",
     "proposals": [

@@ -15,7 +15,7 @@ import {
     getBlock,
 } from "../src/api/client";
 import { signDeploy } from "../src/api/sign";
-import { rhoExprToJson } from "../src/api/rho-json";
+import { rhoExprToJson, unwrap_payload } from "../src/api/rho-json";
 import { faucet } from "../src/api/faucet";
 import * as bc from "../src/utils/blockchain";
 import * as rho from "../src/utils/rho";
@@ -51,7 +51,10 @@ async function main() {
     // 2. explore-deploy: simple term + rhoExprToJson
     const simple = await exploreDeploy(HTTP, "new return in { return!(42) }");
     check(Array.isArray(simple.expr) && simple.expr.length === 1, "explore-deploy returns one expr");
-    check("ExprInt" in simple.expr[0] && simple.expr[0].ExprInt === 42, "expr[0] is {ExprInt:42}");
+    check(
+        "ExprInt" in simple.expr[0] && unwrap_payload(simple.expr[0].ExprInt) === 42,
+        "expr[0] is an ExprInt carrying 42"
+    );
     check(rhoExprToJson(simple.expr[0]) === 42, "rhoExprToJson(ExprInt) === 42");
     check(!!simple.block?.blockHash, "explore-deploy returns block.blockHash");
 
@@ -60,8 +63,8 @@ async function main() {
     check(!!deployer, "derive deployer address from private key");
     const bal = await exploreDeploy(HTTP, rho.fn_check_balance(deployer!.revAddr));
     check(
-        !!bal.expr[0] && "ExprInt" in bal.expr[0] && bal.expr[0].ExprInt >= 0,
-        `check_balance returns ExprInt (${bal.expr[0] && "ExprInt" in bal.expr[0] ? bal.expr[0].ExprInt : "?"})`
+        !!bal.expr[0] && "ExprInt" in bal.expr[0] && unwrap_payload(bal.expr[0].ExprInt) >= 0,
+        `check_balance returns ExprInt (${bal.expr[0] && "ExprInt" in bal.expr[0] ? unwrap_payload(bal.expr[0].ExprInt) : "?"})`
     );
 
     // 4. deploy (sign a term that writes to the deployId channel)
@@ -107,7 +110,8 @@ async function main() {
         }
     }
     check(
-        !!attachResult && "ExprBytes" in attachResult[0] && attachResult[0].ExprBytes === "deadbeef",
+        !!attachResult && "ExprBytes" in attachResult[0]
+            && unwrap_payload(attachResult[0].ExprBytes) === "deadbeef",
         `attachment round-trips as ExprBytes (${JSON.stringify(attachResult)})`
     );
 
@@ -177,7 +181,11 @@ async function main() {
     check(faucetDone, "faucet deploy reached a terminal state");
 
     const targetBal = await exploreDeploy(HTTP, rho.fn_check_balance(target!.revAddr));
-    const fundedAmt = targetBal.expr[0] && "ExprInt" in targetBal.expr[0] ? targetBal.expr[0].ExprInt : 0;
+    // Unwrap the variant payload before comparing: the wire carries `{"ExprInt":{"data":N}}`, so the
+    // raw `ExprInt` is an object here and `{} > 0` is false — a funded target would have been
+    // reported as unfunded. Nothing type-checked this file when the envelope landed, which is how it
+    // survived; `tsconfig.scripts.json` now covers `scripts/**`.
+    const fundedAmt = targetBal.expr[0] && "ExprInt" in targetBal.expr[0] ? unwrap_payload(targetBal.expr[0].ExprInt) : 0;
     check(fundedAmt > 0, `faucet funded target (balance=${fundedAmt}${fundedAmt === 0 ? " — node-side revVault transfer persistence bug" : ""})`);
 
     // 10. capabilities + pooled deploys

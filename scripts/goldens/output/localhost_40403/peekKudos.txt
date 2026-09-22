@@ -2,6 +2,8 @@
   [
     "#define",
     "$kudos",
-    {}
+    {
+      "test": <INT>
+    }
   ]
 ]

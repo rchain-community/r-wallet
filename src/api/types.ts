@@ -1,23 +1,47 @@
-// Wire types for the RNode (Rust) HTTP API. Serde enums are externally tagged,
-// so `RhoExpr::ExprInt(42)` serializes as `{"ExprInt":42}` (no `data` wrapper).
+// Wire types for the RNode (Rust) HTTP API.
+//
+// Serde enums are externally tagged AND this port's variant payloads are field-structs, so
+// `RhoExpr::ExprInt(42)` goes over the wire as `{"ExprInt":{"data":42}}`: the tag names the variant
+// and the payload carries one field, `data`. That is the reference (Scala) node's shape as well —
+// `legacy/node/src/main/scala/coop/rchain/node/api/json/JsonSchemaDerivation.scala` declares
+// `final case class ExprInt(data: Long)` and serializes the field — so the envelope is the contract
+// rather than a port quirk. Measured on a live node:
+//   explore-deploy "42"          -> [{"ExprInt":{"data":42}}]
+//   explore-deploy "{\"a\":\"b\"}" -> [{"ExprMap":{"data":{"a":{"ExprString":{"data":"b"}}}}}]
+// `RhoPayload` admits the bare form too, because an early revision of this port emitted it and old
+// recorded responses still parse. Consumers must not branch on the raw shape: read through
+// `rhoExprToJson` (src/api/rho-json.ts), which unwraps either.
+
+/** A variant payload: this port's (and the reference node's) `{data: T}`, or the bare `T`. */
+export type RhoPayload<T> = T | { data: T };
 
 export type RhoUnforg =
-    | { UnforgPrivate: string }
-    | { UnforgDeploy: string }
-    | { UnforgDeployer: string };
+    | { UnforgPrivate: RhoPayload<string> }
+    | { UnforgDeploy: RhoPayload<string> }
+    | { UnforgDeployer: RhoPayload<string> };
+
+/**
+ * A dictionary. This port and the reference node send a JSON **object** of key -> RhoExpr (keys in
+ * the canonical sorted order, the payload being a sorted map); an early revision of this port sent
+ * `[[key, expr], …]`, which is still accepted.
+ */
+export type RhoMapPayload =
+    | Record<string, RhoExpr>
+    | { data: Record<string, RhoExpr> }
+    | [string, RhoExpr][];
 
 export type RhoExpr =
-    | { ExprPar: RhoExpr[] }
-    | { ExprTuple: RhoExpr[] }
-    | { ExprList: RhoExpr[] }
-    | { ExprSet: RhoExpr[] }
-    | { ExprMap: [string, RhoExpr][] }
-    | { ExprBool: boolean }
-    | { ExprInt: number }
-    | { ExprString: string }
-    | { ExprUri: string }
-    | { ExprBytes: string }
-    | { ExprUnforg: RhoUnforg };
+    | { ExprPar: RhoPayload<RhoExpr[]> }
+    | { ExprTuple: RhoPayload<RhoExpr[]> }
+    | { ExprList: RhoPayload<RhoExpr[]> }
+    | { ExprSet: RhoPayload<RhoExpr[]> }
+    | { ExprMap: RhoMapPayload }
+    | { ExprBool: RhoPayload<boolean> }
+    | { ExprInt: RhoPayload<number> }
+    | { ExprString: RhoPayload<string> }
+    | { ExprUri: RhoPayload<string> }
+    | { ExprBytes: RhoPayload<string> }
+    | { ExprUnforg: RhoPayload<RhoUnforg> };
 
 export interface VersionInfo {
     api: string;

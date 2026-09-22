@@ -194,6 +194,12 @@ run, so a new snippet cannot silently escape coverage.
   registered `rho:id`s → `<RHO-ID>`, deploy signatures/block hashes → `<HEX>`, a free-variable dump
   tail → `<elided>`, and the top-level result is sorted (a result is an unordered Par, so its order
   varies between runs).
+- A case whose result is chain state that moves under the run's own feet — a REV balance that falls
+  with every deploy's gas, a kudos counter that climbs once per run — declares
+  `volatile_numbers: "<why>"`, and every number leaf of its pane is then written as `<INT>`. The
+  golden still pins the shape, the keys and that a value is present, but not the drifting number, so
+  it is deliberately not valid JSON. Such a case passes only if two consecutive compare runs pass:
+  one clean run is not evidence that the value has stopped drifting.
 
 **Unit tests** (`scripts/test-unit.ts`) import the real modules and cover, without a
 devnet: deploy signing (`signDeploy` + the `shardId` field-11 serialization + RCHIP #39

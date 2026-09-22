@@ -4,7 +4,7 @@
 import elliptic from "elliptic";
 import blake from "blakejs";
 import { deployDataProtobufSerialize, signDeploy, decodeBase16 } from "../src/api/sign";
-import { deploy, propose, getShards, runTxn, getTxn, getTxnList } from "../src/api/client";
+import { deploy, propose, getShards, runTxn, getTxn, getTxnList, dataAtName } from "../src/api/client";
 import * as bc from "../src/utils/blockchain";
 import * as rho from "../src/utils/rho";
 import { snippets, snippet_apply, snippet_meta } from "../src/modules/wallet/deploy/snippets";
@@ -136,6 +136,31 @@ async function main() {
 
         globalThis.fetch = (async () => new Response(JSON.stringify("Success! Block abc created and added."), { status: 200 })) as typeof fetch;
         check((await propose("http://x")).includes("Block abc created"), "propose returns the plain string");
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+
+    // 5a. data-at-name sends the *enveloped* request. The node's request DTOs are field-structs, so
+    // the bare `{"UnforgDeploy":"<hex>"}` the wallet used to send is rejected outright ("invalid
+    // type: string, expected struct Data"); nothing caught that until a script type-check and the
+    // integration test both ran. The body is asserted here rather than at the node.
+    try {
+        let sent: string | undefined;
+        globalThis.fetch = (async (_url, opt) => {
+            sent = String((opt as RequestInit | undefined)?.body);
+            return new Response(JSON.stringify({ expr: [], block: {} }), { status: 200 });
+        }) as typeof fetch;
+        await dataAtName("http://x", { UnforgDeploy: "deadbeef" }, 1);
+        check(
+            sent === JSON.stringify({ name: { UnforgDeploy: { data: "deadbeef" } }, depth: 1 }),
+            `dataAtName envelopes the name on the wire (${sent})`
+        );
+        // An already-enveloped payload is not double-wrapped.
+        await dataAtName("http://x", { UnforgPrivate: { data: "aa" } }, 1);
+        check(
+            sent === JSON.stringify({ name: { UnforgPrivate: { data: "aa" } }, depth: 1 }),
+            "dataAtName passes an enveloped payload through once"
+        );
     } finally {
         globalThis.fetch = originalFetch;
     }

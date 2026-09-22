@@ -11,12 +11,24 @@
 //   npm run test:output -- --record            (re)record goldens for the target
 //   npm run test:output -- --node <url>        target another node (e.g. https://rnodeapi.rhobot.net)
 //   npm run test:output -- --key <hex>         deploy with this private key
-//   npm run test:output -- --strict            also fail when a contract's output is an error
+//
+// A case fails when its pane does not show the committed golden, when it shows an error/status
+// instead of JSON (unless the case declares `error_ok`), and when it returns nothing without a
+// declared `returns_nothing`. A case whose contract the node's own genesis install makes unable to
+// answer declares `blocked_by` instead — with a tripwire in the other direction: it fails the moment
+// it starts answering, so the declaration cannot outlive the defect. Recording is refused for a case
+// that timed out, did not compile, or returned nothing it does not legitimately return.
 //
 // Goldens live in scripts/goldens/output/<host>/<snippet>.txt and hold the pane text verbatim
 // after normalisation of everything run-dependent (REV addresses -> <ADDR>, registered rho:ids ->
 // <RHO-ID>, deploy signatures/block hashes -> <HEX>, a free-variable dump tail -> <elided>).
 // The same normaliser runs on both the record and the compare path.
+//
+// A case may additionally declare `volatile_numbers` when its result is chain state that moves under
+// the run's own feet (a balance that falls with every deploy's gas, a counter that climbs once per
+// run). Every number leaf is then written as <INT>, so the golden pins the shape, the keys and that
+// a value is present but not the drifting value — which makes such a golden deliberately not valid
+// JSON. One clean run is not evidence for these: the compare must pass twice in a row.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -31,6 +43,7 @@ import {
 } from "../src/modules/wallet/deploy/snippets";
 import { master_uri_for_url } from "../src/config/master-uri";
 import { formatRhoJson, formatRhoResult, output_text } from "../src/api/rho-json";
+import { exploreDeployRaw } from "../src/api/client";
 import { get_account_from_private_key } from "../src/utils/blockchain";
 import { deploy as rnode_deploy, explore as rnode_explore } from "../src/utils/rnode";
 import { PLAYGROUND_ACCOUNTS } from "../src/config/playground";
@@ -59,12 +72,39 @@ interface Case {
      */
     returns_nothing?: string;
     /**
+     * The pane legitimately shows an error/status instead of JSON for this case (a node that is
+     * known not to host the contract, for instance). Must say why. Nothing sets this on the devnet:
+     * an error there is a failure, which is the whole point of the run.
+     */
+    error_ok?: string;
+    /**
      * The snippet's own source says this term must never be deployed (a `// … use EXPLORE` marker).
      * Asserted, not trusted: `needs_deploy` promotes on a substring match over the code text, so a
      * future snippet that merely *mentions* a deploy-time channel would otherwise be turned into a
      * chain write without anyone deciding that.
      */
     explore_only?: string;
+    /**
+     * Reason this case's numeric leaves must not be pinned. Some results are chain state that moves
+     * under the suite's own feet: a REV balance falls as every deploy spends gas, and a kudos
+     * counter climbs once per run. A golden recorded as a number is stale by the next run, and
+     * re-recording it would make the suite assert whatever the last run happened to see. Declared,
+     * every number leaf of the JSON result is written as the bare token `<INT>`: the golden still
+     * pins the shape, the keys and that a value is present, but not the drifting value. Must say
+     * why — an exemption without a reason becomes a resting place.
+     */
+    volatile_numbers?: string;
+    /**
+     * Reason this case is *blocked on the node*, not on the wallet: the contract is installed in a
+     * way that cannot answer, so the pane shows `[]` until someone else changes the chain. Distinct
+     * from `returns_nothing` — that says the contract's own design returns nothing, this says the
+     * node's genesis install makes an answer impossible, and the two must not be confused, because
+     * only one of them is a defect. The declaration is a **tripwire**, not an excuse: the moment the
+     * pane shows a value, this case fails and demands the flag's removal, so it cannot outlive the
+     * defect it documents. A blocked case records no golden — `[]` here is the symptom, and
+     * committing it would encode the bug as the contract.
+     */
+    blocked_by?: string;
 }
 
 // `explore-deploy` does not bind the deploy-time system channels, so any contract that reads
@@ -86,9 +126,15 @@ function effective_op(name: string): Op {
 // added contract cannot silently escape coverage.
 const CASES: Record<string, Case> = {
     blank: { op: "explore", returns_nothing: "an empty term sends nothing to the result channel" },
-    // Read an account this suite never spends from, so the recorded balance does not drift as a
-    // side effect of the deploy cases in the same run.
-    checkBalance: { op: "explore", args: { myGovRevAddr: PLAYGROUND_ACCOUNTS[1].revAddr } },
+    // Reads `args.myGovRevAddr`. On a remote host that is a playground account this suite never
+    // spends from; on the devnet `main()` points it at the deployer instead — the account that pays
+    // for every deploy in the run — so the balance necessarily falls as the run proceeds.
+    checkBalance: {
+        op: "explore",
+        args: { myGovRevAddr: PLAYGROUND_ACCOUNTS[1].revAddr },
+        volatile_numbers: "the REV balance falls by the gas of every deploy in this run, so a "
+            + "recorded number is stale by the next case",
+    },
     transfer: {
         op: "excluded",
         note: "moves REV and therefore mutates balances; covered end-to-end by npm run test:api",
@@ -126,10 +172,7 @@ const CASES: Record<string, Case> = {
     newGroup: { op: "explore" },
     joinGroup: { op: "explore" },
     addMember: { op: "explore" },
-    newMemberDirectory: {
-        op: "explore",
-        note: "references undeclared channels (trace/MCA/deployerId), so it cannot compile",
-    },
+    newMemberDirectory: { op: "explore" },
     makeMint: { op: "explore" },
 
     // Self-contained: these produce a real result on a bare node.
@@ -138,9 +181,35 @@ const CASES: Record<string, Case> = {
         returns_nothing: "the contract writes to rho:io:stdout, not to the result channel",
     },
     getRoll: { op: "explore" },
-    peekKudos: { op: "explore", note: "references an undeclared channel (KudosReg)" },
-    awardKudos: { op: "explore", note: "references an undeclared channel (KudosReg)" },
-    claimWithInbox: { op: "explore" },
+    // awardKudos runs before peekKudos deliberately: on a chain that has never awarded, the kudos
+    // map is `{}` — no counter exists to read — so peekKudos' golden would be `{}` on a fresh chain
+    // and `{"test": N}` on every chain after one award, i.e. it would pin run *history* rather than
+    // the contract. Awarding first makes the pair stable in both directions (measured: peek reads
+    // `{}` before the first award on a fresh chain).
+    awardKudos: {
+        op: "explore",
+        volatile_numbers: "the counter it returns is the value after this run's award, so it climbs "
+            + "by one on every run",
+    },
+    peekKudos: {
+        op: "explore",
+        volatile_numbers: "the counter it reads is chain state that every run's awardKudos bumps, "
+            + "so a recorded count is stale by the next run",
+    },
+    // Not a wallet defect: measured, every hop of this snippet fires and `memberIdGovRev.rho`'s
+    // `claim` answers `(false, "revAddr must match deployer")` — it derives the deployer's address
+    // from `rho:rchain:deployerId` **as bound in its own install deploy**, and genesis signs the
+    // `roll` class with the fixed key blake2b256("rnode/genesis/rgov/roll") (pubkey 04012a28…,
+    // address 11112JQ5MP17oXzXTeqcXPk1bP9WiVU5SokMUpc3B3vwE8jCRULssj), so no other deployer can
+    // ever satisfy it. `setup` only matches `@(true, …)`, so the refusal leaves the pane empty with
+    // no error. Evidence: scripts/probe-claim-inbox.mts (markers) and scripts/probe-deployer-address.mts
+    // (both derivations and both balances). Cannot be fixed in the wallet — `claim` is the chain's
+    // only membership gate, and a snippet that claimed without it would be lying.
+    claimWithInbox: {
+        op: "explore",
+        blocked_by: "genesis installs the roll class with a fixed key, so claim compares against that "
+            + "key's address and refuses every other deployer (node-side; see AGENTS.md)",
+    },
     checkRegistration: { op: "explore" },
     lookupURI: {
         op: "explore",
@@ -177,7 +246,6 @@ function arg(name: string): string | undefined {
 }
 
 const RECORD = process.argv.includes("--record");
-const STRICT = process.argv.includes("--strict");
 const TIMEOUT_MS = Number(arg("timeout") ?? 30000);
 
 const NODE = arg("node") ?? process.env.RNODE_URL ?? "http://localhost:40403";
@@ -193,7 +261,11 @@ const GOLDEN_DIR = path.join(HEREDIR, "goldens", "output", HOST);
 // rho:ids, deploy signatures/block hashes (a deploy id is a ~140-char DER hex string, so the run
 // must be matched whole rather than in 64-char chunks), and the tail of a rholang free-variable
 // dump, which echoes the built term and is enormous.
-function normalise(text: string): string {
+//
+// `mask_ints` additionally blanks every number leaf of a JSON result as the bare token `<INT>`. It
+// is a parameter rather than a second function so that the golden written at record time and the
+// text compared at run time are literally the same expression — see `volatile_numbers` on `Case`.
+function normalise(text: string, mask_ints = false): string {
     const cleaned = text
         .replace(/1111[1-9A-HJ-NP-Za-km-z]{30,}/g, "<ADDR>")
         .replace(/rho:id:[0-9a-z]+/g, "<RHO-ID>")
@@ -208,14 +280,45 @@ function normalise(text: string): string {
         const value = JSON.parse(cleaned);
         if (!Array.isArray(value)) return cleaned;
 
+        // Sort BEFORE masking, because a masked leaf is a string: masking first would push every
+        // numeric pair into the lexicographic branch below and the sort would silently stop
+        // happening. Two equal elements compare `0`, not "greater" — a comparator that calls them
+        // greater is inconsistent, and `sort()` is then free to return any order at all.
         const sorted = [...value].sort((a, b) => {
             if (typeof a === "number" && typeof b === "number") return a - b;
-            return JSON.stringify(a) < JSON.stringify(b) ? -1 : 1;
+            const ka = JSON.stringify(a);
+            const kb = JSON.stringify(b);
+            return ka < kb ? -1 : ka > kb ? 1 : 0;
         });
-        return formatRhoJson(sorted);
+
+        if (!mask_ints) return formatRhoJson(sorted);
+        return formatRhoJson(mask_number_leaves(sorted)).replace(MASKED_INT_RENDERED, "<INT>");
     } catch {
         return cleaned;
     }
+}
+
+// The value a masked number leaf carries until it is rendered. The NUL wrapper is what makes the
+// substitution above provable: `formatRhoJson` escapes a NUL as `\u0000`, so the escaped form can
+// only have come from this mask — never from a value the contract returned, even one that happens
+// to read `<INT>`. The golden is therefore not valid JSON when it carries the token, by design:
+// nothing re-parses a golden (it is read and compared as text at the end of the sweep).
+const MASKED_INT = "\u0000<INT>\u0000";
+const MASKED_INT_RENDERED = /"\\u0000<INT>\\u0000"/g;
+
+// Every number leaf, keys untouched. Deliberately not a size or integrality test: every rholang
+// integer is integral, a kudos counter is `6`, and any threshold low enough to mask `6` also masks
+// `displayVote`'s `"proposals": [1, 2]`, `castBallot`'s `1` and `createURI`'s `1`. What scopes the
+// mask is the per-case `volatile_numbers`, not a cleverer predicate.
+function mask_number_leaves(value: unknown): unknown {
+    if (typeof value === "number") return MASKED_INT;
+    if (Array.isArray(value)) return value.map(mask_number_leaves);
+    if (value !== null && typeof value === "object") {
+        return Object.fromEntries(
+            Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, mask_number_leaves(v)])
+        );
+    }
+    return value;
 }
 
 // Arguments as the editor fills them (Deploy.tsx set_snippet): the snippet's own defaults, then
@@ -413,12 +516,63 @@ async function check_process_api_schema(): Promise<void> {
 }
 
 /**
- * Why a case's output must not be recorded as a golden, or null when it may be. See the call site:
- * a golden is a node answer, and neither "the harness gave up" nor "the term never compiled" is one.
+ * The **wire shape** of a `RhoExpr`, asserted against the node rather than against our own types.
+ *
+ * The parser accepts both this port's enveloped form and the bare form an early revision sent, so
+ * nothing else in this suite would notice if the node stopped enveloping — and this suite is the
+ * consumer-side citation the node's response-schema standard leans on. So the shape is pinned here,
+ * on the raw body of the same endpoint the wallet uses. The expected values are measured, not
+ * derived (`curl -X POST /api/explore-deploy`, devnet at block 644):
+ *   new return in { return!(42) }              -> [{"ExprInt":{"data":42}}]
+ *   new return in { return!({"a": "b"}) }      -> [{"ExprMap":{"data":{"a":{"ExprString":{"data":"b"}}}}}]
+ *   new return in { return!(["x", 1]) }        -> [{"ExprList":{"data":[…]}]}]
+ * i.e. the tag names the variant, the payload is a field-struct named `data`, and a dictionary is a
+ * JSON **object** (not the pair list an intermediate revision of this port emitted).
+ *
+ * A failure here is a node-side finding (spec/API-SCHEMA.md on the node side), not a wallet bug.
  */
-function unrecordable(text: string): string | null {
+async function check_wire_schema(): Promise<void> {
+    const cases: Array<[string, string, unknown]> = [
+        ["scalar", "new return in { return!(42) }", { ExprInt: { data: 42 } }],
+        [
+            "dictionary",
+            'new return in { return!({"a": "b"}) }',
+            { ExprMap: { data: { a: { ExprString: { data: "b" } } } } },
+        ],
+        [
+            "list",
+            "new return in { return!([\"x\", 1]) }",
+            { ExprList: { data: [{ ExprString: { data: "x" } }, { ExprInt: { data: 1 } }] } },
+        ],
+    ];
+
+    for (const [label, term, want] of cases) {
+        let got: unknown;
+        try {
+            const res = (await exploreDeployRaw(NODE, term)) as { expr?: unknown[] };
+            got = res?.expr?.[0];
+        } catch (err) {
+            check(false, `wire: ${label} response readable (${(err as Error).message.slice(0, 120)})`);
+            continue;
+        }
+        check(
+            JSON.stringify(got) === JSON.stringify(want),
+            `wire: ${label} is enveloped — the variant's payload carries its value in a \`data\` field`
+                + ` (want ${JSON.stringify(want)}, got ${JSON.stringify(got)})`
+        );
+    }
+}
+
+/**
+ * Why a case's output must not be recorded as a golden, or null when it may be. See the call site:
+ * a golden is a node answer, and neither "the harness gave up", "the term never compiled", nor "it
+ * sent nothing to the result channel" is one. The last is the subtle one: an empty result recorded
+ * as the golden makes the failure the expected behaviour, which is how an outage got committed.
+ */
+function unrecordable(text: string, allowed_empty: boolean): string | null {
     if (/^TIMEOUT after /m.test(text)) return "the case did not return (timeout)";
     if (/Parsing error|free variables|process context/.test(text)) return "the term did not compile";
+    if (!allowed_empty && text.trim() === "[]") return "it returned nothing, and this case expects a value";
     return null;
 }
 
@@ -492,29 +646,74 @@ async function main() {
         }
         ran++;
 
-        const output = normalise(pane.text);
+        const output = normalise(pane.text, !!c.volatile_numbers);
 
         // Which side of the pane rule produced this — the result JSON, or an error/status.
-        if (pane.errored) errored.push(name);
-        else json_ok++;
+        if (pane.errored) {
+            errored.push(name);
+            // An error/status is not JSON, so it is a failure unless the case declares it. Asserted
+            // rather than merely counted: `errored` used to be reported and then ignored outside
+            // --strict, so a node that errored on a contract read as a pass with a footnote.
+            check(
+                !!c.error_ok,
+                `${name} [${op_label}] shows JSON, not an error/status — got ${JSON.stringify(output.slice(0, 160))}`
+                    + (c.error_ok ? ` (declared: ${c.error_ok})` : "")
+            );
+        } else json_ok++;
 
-        // An empty result is only acceptable where it is the contract's actual behaviour.
+        // An empty result is only acceptable where that is the contract's actual behaviour, or where
+        // a declared node-side block makes an answer impossible until someone else changes the chain.
         const is_empty = output.trim() === "[]";
+        const blocked = is_empty && !!c.blocked_by;
         if (is_empty) {
             check(
-                !!c.returns_nothing,
+                !!c.returns_nothing || blocked,
                 `${name} [${op_label}] returns a value`
-                    + (c.returns_nothing ? ` — allowed to return nothing: ${c.returns_nothing}` : " (got [])")
+                    + (c.returns_nothing
+                        ? ` — allowed to return nothing: ${c.returns_nothing}`
+                        : blocked
+                            ? ` — blocked on the node: ${c.blocked_by}`
+                            : " (got [])")
             );
+        }
+
+        // The tripwire that keeps `blocked_by` from becoming a resting place: a blocked case that
+        // answers has had its defect fixed (or its contract swapped), and the declaration must go.
+        if (c.blocked_by && !is_empty) {
+            check(
+                false,
+                `${name} [${op_label}] is blocked no longer (${c.blocked_by}) — it answered, so remove `
+                    + `the declaration and record its golden`
+            );
+        }
+
+        // A declared exemption has to be doing something. If masking changed nothing, this case is
+        // not run-dependent the way its reason claims, and the flag has become a resting place —
+        // so it is asserted rather than trusted, in the same spirit as `returns_nothing` above. The
+        // reason rides in the label, so every run prints why the exemption exists.
+        if (c.volatile_numbers) {
+            check(
+                output !== normalise(pane.text),
+                `${name} [${op_label}] pins a run-dependent number, and the golden masks it `
+                    + `(${c.volatile_numbers})`
+            );
+        }
+
+        // A blocked case records no golden, in either mode: `[]` here is the symptom of the node-side
+        // defect, and committing it would encode the bug as the contract's behaviour.
+        if (blocked) {
+            check(true, `${name} [${op_label}] still blocked on the node (${c.blocked_by})`);
+            continue;
         }
 
         if (RECORD) {
             // A golden must be the *node's* answer. A timeout is this harness giving up (the term may
-            // still be running on the node), and a parse error means the term never ran at all —
-            // neither is evidence about the contract, and recording one makes a broken environment
+            // still be running on the node), a parse error means the term never ran at all, and an
+            // empty result where the case expects a value means the contract did not answer —
+            // none is evidence about the contract, and recording one makes a broken environment
             // look correct on the next compare run. That is exactly how an outage got committed as
             // expected behaviour and produced minutes of results that meant nothing.
-            const refused = unrecordable(output);
+            const refused = unrecordable(output, !!c.returns_nothing);
             if (refused) {
                 check(false, `${name} [${op_label}] NOT recorded: ${refused}`);
                 continue;
@@ -536,6 +735,7 @@ async function main() {
     }
 
     console.log("\n--- node response schema ---");
+    await check_wire_schema();
     await check_process_api_schema();
 
     console.log("\n--- governance handshake ---");
@@ -547,10 +747,6 @@ async function main() {
     }
     if (excluded.length > 0) {
         for (const e of excluded) console.log(`excluded: ${e}`);
-    }
-
-    if (STRICT && errored.length > 0) {
-        check(false, `--strict: ${errored.length} contract(s) produced no result JSON`);
     }
 
     console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

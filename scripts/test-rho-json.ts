@@ -50,9 +50,79 @@ const nested: RhoExpr = {
 };
 eq(rhoExprToJson(nested), [true, "ok", { x: 1 }], "nested tuple/map");
 
+// --- The wire form a node actually sends (and the reference Scala node sends): every variant
+// payload is a field-struct, `{"data": …}`. Measured from a live node:
+//   explore-deploy "42"             -> [{"ExprInt":{"data":42}}]
+//   explore-deploy "{\"a\":\"b\"}"  -> [{"ExprMap":{"data":{"a":{"ExprString":{"data":"b"}}}}}]
+// These are the cases that were failing in the editor: the parser returned the envelope itself for
+// scalars (so the pane showed `{"data":999992610000}`) and threw for collections.
+eq(rhoExprToJson({ ExprInt: { data: 42 } }), 42, "enveloped ExprInt -> 42");
+eq(rhoExprToJson({ ExprBool: { data: false } }), false, "enveloped ExprBool -> false");
+eq(rhoExprToJson({ ExprString: { data: "hi" } }), "hi", "enveloped ExprString -> hi");
+eq(rhoExprToJson({ ExprUri: { data: "rho:id:x" } }), "rho:id:x", "enveloped ExprUri -> string");
+eq(rhoExprToJson({ ExprBytes: { data: "deadbeef" } }), "deadbeef", "enveloped ExprBytes -> hex");
+eq(
+    rhoExprToJson({ ExprUnforg: { data: { UnforgDeploy: { data: "abcd" } } } }),
+    "abcd",
+    "enveloped ExprUnforg/UnforgDeploy -> hex"
+);
+eq(
+    rhoExprToJson({ ExprList: { data: [{ ExprInt: { data: 1 } }, { ExprInt: { data: 2 } }] } }),
+    [1, 2],
+    "enveloped ExprList -> array"
+);
+eq(
+    rhoExprToJson({ ExprTuple: { data: [{ ExprInt: { data: 1 } }, { ExprBool: { data: true } }] } }),
+    [1, true],
+    "enveloped ExprTuple -> array"
+);
+eq(rhoExprToJson({ ExprSet: { data: [{ ExprInt: { data: 1 } }] } }), [1], "enveloped ExprSet -> array");
+eq(
+    rhoExprToJson({ ExprMap: { data: { a: { ExprString: { data: "b" } } } } }),
+    { a: "b" },
+    "enveloped ExprMap -> object"
+);
+
+// The measured reply, verbatim, as a whole response body would carry it.
+eq(
+    rhoExprToJson({
+        ExprMap: { data: { a: { ExprString: { data: "b" } } } },
+    } as RhoExpr),
+    { a: "b" },
+    "recorded node reply: ExprMap envelope -> {a: \"b\"}"
+);
+
+// A dictionary as a bare JSON object (no envelope) — the same rule, one less wrapper.
+eq(rhoExprToJson({ ExprMap: { a: { ExprInt: 1 } } }), { a: 1 }, "bare-object ExprMap -> object");
+eq(
+    rhoExprToJson({ ExprMap: { data: { b: { ExprBool: true }, a: { ExprInt: 1 } } } }),
+    { b: true, a: 1 },
+    "ExprMap keeps the node's key order"
+);
+
+// Mixed: the bare form nested inside the enveloped one, which is what a half-updated chain sends.
+eq(
+    rhoExprToJson({
+        ExprList: { data: [{ ExprInt: 1 }, { ExprString: { data: "x" } }, { ExprMap: [["k", { ExprInt: 2 }]] }] },
+    }),
+    [1, "x", { k: 2 }],
+    "bare and enveloped payloads mix within one value"
+);
+
 // null / undefined
 check(rhoExprToJson(null) === null, "null -> null");
 check(rhoExprToJson(undefined) === null, "undefined -> null");
+
+// The editor pane, end to end, for the two replies that were broken.
+check(
+    formatRhoResult([{ ExprInt: { data: 42 } } as RhoExpr]) === "[\n  42\n]",
+    "formatRhoResult([enveloped ExprInt]) -> [42]"
+);
+check(
+    formatRhoResult([{ ExprMap: { data: { a: { ExprString: { data: "b" } } } } } as RhoExpr]) ===
+        '[\n  {\n    "a": "b"\n  }\n]',
+    "formatRhoResult([enveloped ExprMap]) -> nested JSON, no envelope in the pane"
+);
 
 // Formatting: pretty-print, 2-space indent, valid JSON
 const pretty = formatRhoJson(rhoExprToJson(nested));

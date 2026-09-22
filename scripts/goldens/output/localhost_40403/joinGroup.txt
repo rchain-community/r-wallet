@@ -1,3 +1,50 @@
 [
-  "adding test"
+  "Sorry, username test already exists.",
+  "added.",
+  "adding test to test",
+  "adding test",
+  "community \n  test failed",
+  [
+    "entering add user",
+    "test",
+    "<ADDR>",
+    "<RHO-ID>"
+  ],
+  [
+    "map",
+    {
+      "test": {
+        "admin": "<HEX>",
+        "grant": "<HEX>",
+        "info": {
+          "request": "<HEX>"
+        },
+        "read": "<HEX>",
+        "write": "<HEX>"
+      }
+    }
+  ],
+  [
+    "revAddr not registered, adding anyway for now.",
+    "<ADDR>"
+  ],
+  [
+    "userlist",
+    [
+      "test"
+    ],
+    "revmap",
+    {
+      "<ADDR>": "test"
+    },
+    "isThere",
+    {
+      "inbox": "<RHO-ID>",
+      "revAddr": "<ADDR>"
+    }
+  ],
+  {
+    "all": [],
+    "allowed": false
+  }
 ]

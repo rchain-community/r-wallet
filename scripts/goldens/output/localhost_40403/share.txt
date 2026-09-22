@@ -1,1 +1,7 @@
-<deploy error message not available in cache or deploy executed on another node>
+[
+  [
+    "no inbox message of that type and subtype",
+    "test",
+    "test"
+  ]
+]

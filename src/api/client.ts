@@ -3,6 +3,7 @@
 //   httpFetch(METHOD, path, body?) -> ensureOk(res) -> return the typed DTO.
 
 import { httpFetch } from "./http";
+import { envelope_payload } from "./rho-json";
 import type {
     ApiStatus,
     BlockInfo,
@@ -41,6 +42,15 @@ export async function exploreDeploy(url: string, term: string): Promise<RhoDataR
     return res.json as RhoDataResponse;
 }
 
+// The same endpoint as `exploreDeploy`, returned untyped. For asserting the *wire shape* of a
+// `RhoExpr` — the typed DTO deliberately hides it (see scripts/test-output-json.ts, whose
+// assertion is the consumer-side citation for the node's response schema).
+export async function exploreDeployRaw(url: string, term: string): Promise<unknown> {
+    const res = await httpFetch("POST", api(url, "explore-deploy"), JSON.stringify(term));
+    ensureOk(res);
+    return res.json;
+}
+
 export async function deploy(url: string, signed: DeployRequest): Promise<string> {
     const res = await httpFetch("POST", api(url, "deploy"), JSON.stringify(signed));
     ensureOk(res);
@@ -71,10 +81,20 @@ export async function propose(adminUrl: string): Promise<string> {
 }
 
 export async function dataAtName(url: string, name: RhoUnforg, depth = 1): Promise<DataAtNameResponse> {
-    const body = JSON.stringify({ name, depth });
+    // The request carries the same field-struct envelope as the response, and the node rejects the
+    // bare form: measured, `{"UnforgDeploy":"<hex>"}` fails to deserialize ("expected struct Data")
+    // while `{"UnforgDeploy":{"data":"<hex>"}}` is accepted. Callers hand over the domain value.
+    const body = JSON.stringify({ name: envelope_unforg(name), depth });
     const res = await httpFetch("POST", api(url, "data-at-name"), body);
     ensureOk(res);
     return res.json as DataAtNameResponse;
+}
+
+/** Put a name on the wire in the shape the node's request DTOs expect. See `dataAtName`. */
+function envelope_unforg(name: RhoUnforg): RhoUnforg {
+    if ("UnforgDeploy" in name) return { UnforgDeploy: envelope_payload(name.UnforgDeploy) };
+    if ("UnforgDeployer" in name) return { UnforgDeployer: envelope_payload(name.UnforgDeployer) };
+    return { UnforgPrivate: envelope_payload(name.UnforgPrivate) };
 }
 
 export async function getBlock(url: string, hash: string): Promise<BlockInfo> {

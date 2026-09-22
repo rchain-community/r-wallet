@@ -1,3 +1,14 @@
+import { PLAYGROUND_ACCOUNTS } from "../../../config/playground";
+
+// The initial roll as a rholang set literal, built from the published genesis accounts.
+//
+// The chain holds no roll *set* to read: the directory's `Roll` slot answers the roll class
+// **capability**, and the class's `"make"` takes the set from the caller (measured — `"make"` with a
+// set answers `{"self": <cap>, "uri": "rho:id:…"}`). So a member directory is built from a set the
+// client supplies, and the genesis accounts are the only set the wallet can honestly claim is the
+// initial roll. See `getRoll`'s note for the read side, and the AUDIT entry this came from.
+const GENESIS_ROLL_SET = `Set(${PLAYGROUND_ACCOUNTS.map(a => `"${a.revAddr}"`).join(", ")})`;
+
 type Field = {
     name: string;
     type: "string" | "number" | "walletRevAddr" | "MasterURI" | "set" | "uri";
@@ -570,14 +581,20 @@ export const snippets = {
             "  inboxCh\n" +
             "  in {\n" +
             '    for (@{ "peek": *peek, ..._ } <<- @[*deployerId, lockerTag]) {\n' +
-            '      stdout!(["peek", *peek]) |\n' +
             "      peek!(type, subtype, *ch) |\n" +
             "      for ( list <- ch) {\n" +
-            '        stdout!(["list", *list]) |\n' +
-            "        inboxLookup!(toInboxURI, *inboxCh) |\n" +
-            "        for (inbox <- inboxCh) {\n" +
-            '          stdout!(["inbox", *inbox]) |\n' +
-            "          inbox!([type, subtype] ++ *list, *return)\n" +
+            // The Inbox's peek answers `Nil` when nothing matches the type and subtype (measured:
+            // `peek!("type","subtype",*ch)` in a deploy sends an empty par), and `[type, subtype] ++
+            // Nil` is an operator error, which kills the whole deploy — that is how this snippet
+            // failed with a blank error. Report the miss instead of concatenating onto it.
+            "        match (*list) {\n" +
+            "          [*_ ..._] => {\n" +
+            "            inboxLookup!(toInboxURI, *inboxCh) |\n" +
+            "            for (inbox <- inboxCh) {\n" +
+            "              inbox!([type, subtype] ++ *list, *return)\n" +
+            "            }\n" +
+            "          }\n" +
+            '          _ => { return!(["no inbox message of that type and subtype", type, subtype]) }\n' +
             "        }\n" +
             "      }\n" +
             "    }\n" +
@@ -591,23 +608,40 @@ export const snippets = {
         ]
     },
     sendMail: {
+        // `toInboxURI` is the *recipient's* inbox, and an empty value means "send it to my own
+        // inbox" — read from `@[*deployerId, "inbox"]`, whose `URI` key newInbox publishes. That
+        // default matters: the editor prefills a `uri` field with the master read capability, and
+        // mailing *that* sends a message no contract matches, so the pane showed `[]` with nothing
+        // wrong to report. The mailbox answers "added."/"sent…" on the channel it is handed, so the
+        // reply lands on `deployId` and the pane shows it.
         code:
-            "[lockerTag, toInboxURI, from, to, sub, body] => {\n" +
+            "[toInboxURI, from, to, sub, body] => {\n" +
             "  new\n" +
             "  deployId(`rho:rchain:deployId`),\n" +
             "  deployerId(`rho:rchain:deployerId`),\n" +
             "  lookup(`rho:registry:lookup`),\n" +
-            "  inboxCh\n" +
+            "  inboxCh,\n" +
+            "  target\n" +
             "  in {\n" +
-            "    lookup!(toInboxURI, *inboxCh) |\n" +
-            "    for (toinbox <- inboxCh) {\n" +
-            '      toinbox!(["email",from,{"to": to, "sub": sub, "body": body}], *deployId)\n' +
+            '    for (@{"URI": ownURI, ..._} <<- @[*deployerId, "inbox"]) {\n' +
+            '      if (toInboxURI == "") {\n' +
+            "        target!(ownURI)\n" +
+            "      } else {\n" +
+            "        target!(toInboxURI)\n" +
+            "      }\n" +
+            "    } |\n" +
+            "    for (@uri <- target) {\n" +
+            "      lookup!(uri, *inboxCh) |\n" +
+            // A bare receive pattern binds the *name*, which is what a mailbox capability is: the
+            // plan's convention (and the original snippet's) is `for (cap <- ch) { cap!(…) }`.
+            "      for (toinbox <- inboxCh) {\n" +
+            '        toinbox!(["email",from,{"to": to, "sub": sub, "body": body}], *deployId)\n' +
+            "      }\n" +
             "    }\n" +
             "  }\n" +
             "}",
         fields: [
-            str_field("lockerTag"),
-            uri_field("toInboxURI"),
+            str_field("toInboxURI"),
             str_field("from"),
             str_field("to"),
             str_field("sub"),
@@ -680,26 +714,32 @@ export const snippets = {
         fields: [str_field("group"), str_field("userid"), str_field("lockerTag")]
     },
     addMember: {
+        // Upstream read the group's capability out of an inbox message shaped
+        // `["Group", <name>, {"admin","read","write","grant"}]` and then wrote into the *other*
+        // member's box with the caps from that same map. On this chain the Group message a member
+        // receives carries `{"admin","tally"}` (measured: the inbox's `peek` answers
+        // `["Group","test",{"admin":…,"tally":…}]`), so the four-key pattern never matched, both
+        // sends stayed pending and the deploy reported `[]` with no error. Require only the admin
+        // capability — the one thing `"add user"` needs — and report the group's answer; a missing
+        // or differently-shaped message reports itself instead of stalling.
         code:
             "[name, revAddress, themBoxReg, group, lockerTag] => {\n" +
             "  new\n" +
             "  deployId(`rho:rchain:deployId`),\n" +
             "  deployerId(`rho:rchain:deployerId`),\n" +
-            "  lookup(`rho:registry:lookup`),\n" +
-            "  ret,\n" +
-            "  boxCh,\n" +
+            "  gCh,\n" +
             "  ack\n" +
             "  in {\n" +
-            '    for(@{"peek": *peek, "inbox": *inbox, ..._} <<- @{[*deployerId, lockerTag]}) {\n' +
-            "      lookup!(themBoxReg, *boxCh) |\n" +
-            '      peek!("Group", group, *ret)|\n' +
-            '      for ( @[{"admin": *admin, "read": *read, "write": *write, "grant": *grant}] <- ret; themBox <- boxCh ) {\n' +
-            '        //stdout!("adding user")|\n' +
-            '        admin!("add user", name, revAddress, themBoxReg, *ret, *deployId) |\n' +
-            "        for (selfmod <- ret) {\n" +
-            '          //stdout!("user added") |\n' +
-            '          themBox!(["member", group, {"read": *read, "selfmod": *selfmod}], *deployId)\n' +
-            "        }\n" +
+            '    for(@{"peek": *peek, ..._} <<- @[*deployerId, lockerTag]) {\n' +
+            // The receive pattern carries the guard rather than a `match` over a bound value: this
+            // port raises "bare name in process position" for `match (*v)` on a value-bound variable,
+            // and `for (@[{…}] <- ch)` (the idiom sendChat uses and this term copies) matches the
+            // same shape. A message that does not carry an admin capability is left unconsumed, so
+            // the pane shows `[]` — the suite's `returns_nothing` guard is what makes that red.
+            '      peek!("Group", group, *gCh) |\n' +
+            '      for (@[{"admin": admin, ..._}] <- gCh) {\n' +
+            '        @admin!("add user", name, revAddress, themBoxReg, *ack, *deployId) |\n' +
+            '        for (@reply <- ack) { deployId!(["added", name, group, reply]) }\n' +
             "      }\n" +
             "    }\n" +
             "  }\n" +
@@ -707,37 +747,37 @@ export const snippets = {
         fields: [
             str_field("name"),
             str_field("revAddress"),
-            uri_field("themBoxReg"),
+            str_field("themBoxReg"),
             str_field("group"),
             str_field("lockerTag")
         ]
     },
     newMemberDirectory: {
         // Repaired from /tmp/rgov/src/actions/newMemberDirectory.rho, which is broken as shipped:
-        // `trace` and `deployerId` are used but never bound, and both `MCA(...)` calls are missing
-        // their `!` so they never send. The class lookup follows the working convention in
-        // newChat.rho (read the master directory, then `MCA!("<Class>", *ch)`).
+        // `trace` and `deployerId` are used but never bound, and both of its sends are missing their
+        // `!`. Two further corrections, both measured on a genesis-built chain:
+        //   1. it read the deployer's lockers at `@[*deployerId, "MasterContractAdmin"]` — a key only
+        //      the rgov bootstrap's own deployer has. A member's dictionary is at
+        //      `@[*deployerId, "dictionary"]`, which newInbox publishes from `GetMe` (see getRoll).
+        //   2. the `Roll` slot answers the roll class *capability*, not a roll-set URI, so
+        //      `"makeFromURI"` had nothing to look up. The class's `"make"` takes the set directly
+        //      and answers `{"self": <cap>, "uri": "rho:id:…"}` (measured), so the initial roll is
+        //      the published genesis set. Note what that implies: the roll is a *caller* input here,
+        //      so a directory built this way proves membership only against the set you name.
         code:
             "[] => {\n" +
             "  new\n" +
             "  return(`rho:rchain:deployId`),\n" +
-            "  trace,\n" +
             "  deployerId(`rho:rchain:deployerId`),\n" +
-            "  lookup(`rho:registry:lookup`),\n" +
-            "  regCh\n" +
+            "  rollCh,\n" +
+            "  selfCh\n" +
             "  in {\n" +
-            '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "MasterContractAdmin"]) {\n' +
-            '      trace!({"MCA": *MCA}) |\n' +
-            '      MCA!("Directory", *regCh)\n' +
+            '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
+            '      MCA!("Roll", *rollCh)\n' +
             "    } |\n" +
-            "    for (MemberDirectory <- regCh) {\n" +
-            '      for (@{"read": *MCA, ..._} <<- @[*deployerId, "MasterContractAdmin"]) {\n' +
-            '        trace!({"MCA": *MCA}) |\n' +
-            '        MCA!("Roll", *regCh)\n' +
-            "      } |\n" +
-            "      for (rollReg <- regCh) {\n" +
-            '        MemberDirectory!("makeFromURI", *rollReg, *return)\n' +
-            "      }\n" +
+            "    for (Roll <- rollCh) {\n" +
+            "      Roll!(\"make\", " + GENESIS_ROLL_SET + ", *selfCh) |\n" +
+            "      for (@result <- selfCh) { return!(result) }\n" +
             "    }\n" +
             "  }\n" +
             "}",
@@ -789,15 +829,21 @@ export const snippets = {
         fields: []
     },
     getRoll: {
+        // Upstream's `for (@set <- ch) { set.toList() }` assumes the directory's `Roll` slot holds a
+        // *set of addresses*. It does not: the slot holds the roll class **capability** (measured —
+        // `MCA!("Roll", *ch)` answers a 32-byte unforgeable, the same shape `MCA!("Chat", …)` answers
+        // in newChat), so `toList()` raises `MethodNotDefined` and the deploy fails with no reason
+        // reported (the node discards a failed deploy's error: block_api_impl.rs:366). Read the
+        // capability, which is what the chain actually answers, and take the roll *set* from the
+        // caller where a set is needed (see newMemberDirectory).
         code:
             "[] => {\n" +
-            "  new trace, ret(`rho:rchain:deployId`), deployerId(`rho:rchain:deployerId`), ch, lookup(`rho:registry:lookup`) in {\n" +
+            "  new ret(`rho:rchain:deployId`), deployerId(`rho:rchain:deployerId`), ch in {\n" +
             '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
-            '      trace!({"MCA": *MCA}) |\n' +
             '      MCA!("Roll", *ch)\n' +
             "    } |\n" +
-            "    for (@set <- ch) {\n" +
-            '      ret!(["#define", "$roll", set.toList()])\n' +
+            "    for (@rollClass <- ch) {\n" +
+            '      ret!(["#define", "$roll", rollClass])\n' +
             "    }\n" +
             "  }\n" +
             "}",
@@ -853,17 +899,32 @@ export const snippets = {
         fields: [str_field("them")]
     },
     claimWithInbox: {
-        // Upstream (src/actions/claimWithInbox.rho) shares checkRegistration's defects:
-        // `MCA("Directory", regCh)` missing its `!`, `deployerId` unbound, and the reply routed to
-        // a fresh local channel instead of rho:rchain:deployId.
+        // Upstream (src/actions/claimWithInbox.rho) shares checkRegistration's defects — the send is
+        // missing its `!`, `deployerId` is unbound, and the reply goes to a fresh channel. It also
+        // called `"setup"` on whatever the `Directory` slot answers, but `"setup"` is a message on a
+        // **member directory instance** (`memberIdGovRev.rho`'s `self`), which `"make"` returns
+        // inside `{"self": …}`. So: build one from a roll containing this address, then claim.
+        // The roll set is the caller's — the chain holds no roll set to check against (see getRoll)
+        // — hence the address is its own membership here; `"claim"` additionally requires the caller
+        // to be the address's owner, which `deployerRevAddr` enforces.
         code:
             "[myGovRevAddr] => {\n" +
-            "  new trace, deployId(`rho:rchain:deployId`), deployerId(`rho:rchain:deployerId`), lookup(`rho:registry:lookup`), regCh in {\n" +
+            "  new\n" +
+            "  deployId(`rho:rchain:deployId`),\n" +
+            "  deployerId(`rho:rchain:deployerId`),\n" +
+            "  rollCh,\n" +
+            "  selfCh,\n" +
+            "  setupCh\n" +
+            "  in {\n" +
             '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
-            '      trace!({"MCA": *MCA}) |\n' +
-            '      MCA!("Directory", *regCh)\n' +
-            "    } | for (memDir <- regCh) {\n" +
-            '      memDir!("setup", myGovRevAddr, *deployId)\n' +
+            '      MCA!("Roll", *rollCh)\n' +
+            "    } |\n" +
+            "    for (Roll <- rollCh) {\n" +
+            "      Roll!(\"make\", Set(myGovRevAddr), *selfCh) |\n" +
+            '      for (@{"self": self, ..._} <- selfCh) {\n' +
+            '        @self!("setup", myGovRevAddr, *setupCh) |\n' +
+            '        for (@reply <- setupCh) { deployId!(["inbox claimed", reply]) }\n' +
+            "      }\n" +
             "    }\n" +
             "  }\n" +
             "}",
@@ -871,24 +932,22 @@ export const snippets = {
     },
     checkRegistration: {
         // Upstream (src/actions/checkRegistration.rho) has three defects: `MCA("Roll", ch)` is
-        // missing its `!` so it never sends (a parse error), `deployerId` is used but never bound,
-        // and the result goes to a fresh local channel rather than the deploy's result channel.
+        // missing its `!` so it never sends, `deployerId` is used but never bound, and the result
+        // goes to a fresh local channel rather than the deploy's result channel. A fourth survives
+        // all three repairs: `addrSet.contains(myGovRevAddr)` needs a *set*, and the directory's
+        // `Roll` slot answers the roll class capability (see getRoll), so the call raises
+        // `MethodNotDefined` and the deploy fails silently. Membership is therefore not readable
+        // here — the chain's only membership gate is `"claim"`, which writes — so this reports the
+        // two chain facts it can: the roll capability and the address it was asked about. Do not
+        // replace this with a boolean: any boolean would be invented.
         code:
             "[myGovRevAddr] => {\n" +
-            "  new\n" +
-            "  trace,\n" +
-            "  deployId(`rho:rchain:deployId`),\n" +
-            "  deployerId(`rho:rchain:deployerId`),\n" +
-            "  lookup(`rho:registry:lookup`),\n" +
-            "  ch\n" +
-            "  in\n" +
-            "  {\n" +
+            "  new deployId(`rho:rchain:deployId`), deployerId(`rho:rchain:deployerId`), ch in {\n" +
             '    for (@{"read": *MCA, ..._} <<- @[*deployerId, "dictionary"]) {\n' +
-            '      trace!({"MCA": *MCA}) |\n' +
             '      MCA!("Roll", *ch)\n' +
             "    } |\n" +
-            "    for (@addrSet <- ch) {\n" +
-            '      deployId!(["#define", "$agm2020voter", addrSet.contains(myGovRevAddr)])\n' +
+            "    for (@rollClass <- ch) {\n" +
+            '      deployId!(["#define", "$agm2020voter", {"roll": rollClass, "member": myGovRevAddr}])\n' +
             "    }\n" +
             "  }\n" +
             "}",
@@ -1149,6 +1208,10 @@ export const snippet_meta: Record<keyof typeof snippets, SnippetMeta> = {
     sendMail: {
         description: "Send a structured email-style message to another inbox.",
         purpose: "Send a member a message with subject and body.",
+        // An empty recipient means your own inbox (the snippet reads it from your lockers), which is
+        // the only target it can be sure exists. Naming someone else's means pasting their inbox URI.
+        fieldHelp: { toInboxURI: "The recipient's inbox URI. Leave empty to send it to your own inbox." },
+        defaults: { toInboxURI: "" },
     },
     newGroup: {
         description: "Create a new group/community.",
@@ -1160,11 +1223,17 @@ export const snippet_meta: Record<keyof typeof snippets, SnippetMeta> = {
     },
     addMember: {
         description: "Add a member to a group.",
-        purpose: "Admit a new member into a group you administer.",
+        purpose: "Admit a new member into a group you administer, using the admin capability in your inbox.",
+        fieldHelp: {
+            name: "The member's username in the group.",
+            revAddress: "The member's REV address.",
+            themBoxReg: "The member's inbox URI.",
+            group: "The group name, as it appears in your inbox.",
+        },
     },
     newMemberDirectory: {
-        description: "Create a member directory.",
-        purpose: "Create the directory that tracks members and registration.",
+        description: "Create a member directory from the initial roll.",
+        purpose: "Build the directory that tracks members, and get its URI back.",
     },
     makeMint: {
         description: "Create a new token mint.",
@@ -1176,8 +1245,8 @@ export const snippet_meta: Record<keyof typeof snippets, SnippetMeta> = {
         purpose: "Smoke-test the editor/deploy pipeline with a trivial contract.",
     },
     getRoll: {
-        description: "Read the membership roll.",
-        purpose: "List the registered voters.",
+        description: "Read the chain's Roll class capability.",
+        purpose: "Show what the directory's Roll slot answers — the class, not a list of members.",
     },
     peekKudos: {
         description: "Peek at the current kudos value.",
@@ -1190,10 +1259,15 @@ export const snippet_meta: Record<keyof typeof snippets, SnippetMeta> = {
     claimWithInbox: {
         description: "Set up your inbox through the member directory.",
         purpose: "Register your inbox with the member directory.",
+        // Blocked on the node: memberIdGovRev.rho's `"claim"`/`"setup"` resolve their inbox and
+        // directory imports from `rho:id:...` placeholders, so nothing answers and the pane stays
+        // empty. The snippet is written to the real protocol; see the node-side ask in the report.
+        fieldHelp: { myGovRevAddr: "Your REV address — `claim` requires the caller to own it." },
     },
     checkRegistration: {
-        description: "Check whether an address is on the voter roll.",
-        purpose: "Verify whether a member is registered to vote.",
+        description: "Report the Roll capability and the address you asked about.",
+        purpose: "Show what the chain can answer about a voter's registration.",
+        fieldHelp: { myGovRevAddr: "The REV address to ask about." },
     },
     lookupURI: {
         description: "Look up the object registered at a URI.",

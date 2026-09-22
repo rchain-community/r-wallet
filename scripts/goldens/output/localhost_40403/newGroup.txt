@@ -1,5 +1,3 @@
 [
-  {
-    "data": "sent..."
-  }
+  "newCommunity \n  test failed"
 ]

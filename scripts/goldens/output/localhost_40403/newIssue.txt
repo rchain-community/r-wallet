@@ -1,8 +1,8 @@
 [
   "Test of redeploy",
+  "added.",
+  "added.",
   "creating ballot",
-  "sent...",
-  "sent...",
   [
     "Issue",
     "<HEX>"

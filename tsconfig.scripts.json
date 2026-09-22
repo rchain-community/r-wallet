@@ -6,7 +6,7 @@
   "extends": "./tsconfig.json",
   "include": [
     "src",
-    "scripts/bootstrap-rgov.ts",
-    "scripts/test-output-json.ts"
+    "scripts/**/*.ts",
+    "scripts/**/*.mts"
   ]
 }

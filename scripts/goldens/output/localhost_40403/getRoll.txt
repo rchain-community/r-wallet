@@ -1,1 +1,7 @@
-<deploy error message not available in cache or deploy executed on another node>
+[
+  [
+    "#define",
+    "$roll",
+    "<HEX>"
+  ]
+]

@@ -4,6 +4,7 @@
     1
   ],
   [
-    "oldvotes were"
+    "oldvotes were",
+    1
   ]
 ]

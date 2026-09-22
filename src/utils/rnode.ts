@@ -14,6 +14,7 @@ import {
     getStatus,
     propose as apiPropose,
 } from '../api/client';
+import { unwrap_payload } from '../api/rho-json';
 import { signDeploy } from '../api/sign';
 import type {
     BalanceResult,
@@ -74,8 +75,10 @@ export async function check_balance(
             return { balance: null, error: "Unknown error" };
         }
 
-        const balance = "ExprInt" in expr ? expr.ExprInt : null;
-        const err = "ExprString" in expr ? expr.ExprString : null;
+        // Both scalars arrive enveloped (`{"ExprInt":{"data":0}}`); `unwrap_payload` also tolerates
+        // the bare form an early revision of the port sent. See src/api/types.ts.
+        const balance = "ExprInt" in expr ? unwrap_payload(expr.ExprInt) : null;
+        const err = "ExprString" in expr ? unwrap_payload(expr.ExprString) : null;
 
         return { balance, error: err };
     } catch (err) {

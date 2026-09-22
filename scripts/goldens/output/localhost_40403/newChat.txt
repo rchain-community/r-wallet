@@ -1,6 +1,6 @@
 [
-  "sent...",
-  "sent...",
+  "added.",
+  "added.",
   [
     "Chat",
     "<HEX>"

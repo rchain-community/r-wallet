@@ -130,6 +130,18 @@ signed protobuf** (field 12) — omit the field for an ordinary deploy.
 
 - `explore-deploy` OpenAPI doc-vs-handler discrepancy (`explore-deploy` body is a raw
   string, not `ExploreDeployRequest`).
+- **`claim` can never succeed for an ordinary deployer (found 2026-09-22, measured).**
+  `memberIdGovRev.rho`'s `claim` compares the caller's `myRevAddr` against the address derived from
+  `rho:rchain:deployerId` *as bound in its own install deploy*. Genesis installs the `roll` class
+  signed by the fixed key `blake2b256("rnode/genesis/rgov/roll")` (pubkey `04012a28…`, REV address
+  `11112JQ5MP17oXzXTeqcXPk1bP9WiVU5SokMUpc3B3vwE8jCRULssj`), so the comparison is against *that*
+  address and every other deployer is refused `(false, "revAddr must match deployer")`. `setup` only
+  pattern-matches `@(true, …)`, so the refusal leaves the pane empty with no error — which is why
+  `claimWithInbox` shows `[]`. Upstream expects each user to run the contract set in their own deploy,
+  so freezing the install key at genesis is the divergence. Evidence:
+  `scripts/probe-claim-inbox.mts` (staged stdout markers, no `MARK-SETUP-REPLY`) and
+  `scripts/probe-deployer-address.mts` (both derivations, both balances). `spec/API-SCHEMA.md` in
+  `~/RNodeRust` is where the node side records the answer.
 
 ## When you change the API layer
 

@@ -1,11 +1,5 @@
 [
-  {
-    "data": "Chat sent!"
-  },
-  {
-    "data": "retrun one"
-  },
-  {
-    "data": "return two"
-  }
+  "Chat sent!",
+  "retrun one",
+  "return two"
 ]

@@ -1,1 +1,29 @@
-[]
+[
+  "Sorry, username test already exists.",
+  [
+    "added",
+    "test",
+    "test"
+  ],
+  [
+    "entering add user",
+    "test",
+    "test",
+    "test"
+  ],
+  [
+    "userlist",
+    [
+      "test"
+    ],
+    "revmap",
+    {
+      "<ADDR>": "test"
+    },
+    "isThere",
+    {
+      "inbox": "<RHO-ID>",
+      "revAddr": "<ADDR>"
+    }
+  ]
+]

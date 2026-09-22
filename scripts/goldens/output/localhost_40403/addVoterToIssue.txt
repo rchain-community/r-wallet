@@ -1,4 +1,5 @@
 [
+  "user already added, returning existing voter capability.",
   {
     "admin": "<HEX>",
     "gives right to vote": "<HEX>"
