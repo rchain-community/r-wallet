@@ -31,10 +31,21 @@ export const local_nodes = u.range(0, 5).map(local_node);
 
 export const r_nodes: Named_Node[] = [
 	{
-		group: "RChain Testnet",
+		// A single-node dev chain that proposes on every deploy — the place to
+		// learn rholang and try contracts. It is NOT the testnet; the two are
+		// different chains with different genesis.
+		group: "RChain",
 		network: "rhobot",
-		name: "Rhobot Testnet Node",
+		name: "Rholang Playground",
 		url: "https://rnodeapi.rhobot.net"
+	},
+	{
+		// The real testnet: two bonded validators, and deliberately idle — a
+		// block appears when a deploy arrives, not on a timer.
+		group: "RChain",
+		network: "testnet",
+		name: "Rhobot Testnet",
+		url: "https://testnet.rhobot.net"
 	}
 ];
 
