@@ -46,6 +46,18 @@ export const r_nodes: Named_Node[] = [
 		network: "testnet",
 		name: "Rhobot Testnet",
 		url: "https://testnet.rhobot.net"
+	},
+	{
+		// The history chain: a genesis-only, read-only snapshot of the REV
+		// allocation (dated 13 May 2026), built from the allocation spreadsheet.
+		// It has one block and no proposer, so balances read and nothing can be
+		// written — the node refuses the deploy relay, the faucet and the txn API
+		// with 403 rather than pooling a deploy that would never be mined. Use it
+		// to look an allocation up; deploys here will fail and that is the design.
+		group: "RChain",
+		network: "history",
+		name: "History (REV allocation)",
+		url: "https://history.rhobot.net"
 	}
 ];
 
