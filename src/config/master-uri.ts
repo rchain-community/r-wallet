@@ -33,6 +33,18 @@ export const MASTER_URI: Record<string, string> = {
      * while the legacy rhobot uri resolves but reads empty.
      */
     testnet: PORT_READ_CAP,
+    /**
+     * The history chain (history.rhobot.net) — genesis-only and read-only, built from the same port
+     * revision, so it carries the same genesis-installed rgov set as the two above.
+     *
+     * Verified as far as this chain allows, and no further: a read-only lookup of PORT_READ_CAP on it
+     * **resolves to a capability rather than erroring**, as on testnet. The directory itself is *not*
+     * exercised, because every method in the deploy snippets needs a `deployerId` and an exploratory
+     * deploy carries none — on any chain — and it cannot be exercised by deploying, because this chain
+     * refuses deploys by design (403). So the constant is carried by construction, not by the same
+     * exercise the entries above record.
+     */
+    history: PORT_READ_CAP,
     mainnet: "",
 };
 
