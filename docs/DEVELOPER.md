@@ -37,8 +37,8 @@ Supporting modules:
 | `src/config/playground.ts` | pre-funded testnet accounts + `pick_random_account` for the landing card |
 | `src/utils/playground.ts` | `activate_account`: derive a testnet account, set it active, route to `/balance` |
 
-Routes: `/` (editor), `/access` (landing), `/balance`, `/transfer`, `/history`,
-`/settings`, plus `/access/*` and `/create/*`. The landing page's **TESTNET WALLET**
+Routes: `/` (editor), `/access` (landing), `/balance`, `/transfer`, `/staking`,
+`/history`, `/settings`, plus `/access/*` and `/create/*`. The landing page's **TESTNET WALLET**
 card loads a pre-funded testnet account and reveals its address and private key.
 
 ---
@@ -88,6 +88,8 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 | `getPooledDeploys(base)` | `GET /api/v1/deploys` | — | `PooledDeploys { deploys: [PooledDeploy] }` |
 | `getShards(base)` | `GET /api/v1/shards` | — | `ShardsResponse { primaryShard, shardCount, shards: [ShardInfo] }` |
 | `runTxn(base, req)` | `POST /api/v1/txn` | `{ txnId, legs: [{ shardId, amount, to }] }` | `TxnRecord` (gateway only; 404 otherwise) |
+| `getPosStatus(base)` | `GET /api/v1/pos` | — | `PosStatus`, or `null` on 404 (node predates the route) |
+| `getDelegations(base, hex)` | `GET /api/v1/pos/delegations?delegator=<hex>` | — | `DelegatorPosition[]`, or `null` on 404; 400 for a malformed key |
 | `getTxn(base, id)` | `GET /api/v1/txn/:txnId` | — | `TxnRecord`, or `null` on 404 |
 | `getTxnList(base)` | `GET /api/v1/txn` | — | `TxnListResponse { inFlight: [TxnRecord] }` |
 
@@ -158,6 +160,47 @@ The wallet's templates in `src/utils/rho.ts` use these:
 - `fn_check_balance(addr)` → `revVault!("getBalance", addr, *balanceCh)`.
 - `fn_transfer_funds(to, amount)` → `revVault!("transfer", *deployerId, to, amount, *resultCh)`
   (no `from` — the signer's `deployerId` is the source).
+
+## Rholang: the native Proof-of-Stake API
+
+`rho:rchain:pos` is likewise **native** (`rholang/src/system_processes.rs::pos`,
+`rholang/src/native_state.rs`). The interpreted `Pos.rhox` is **not installed** on this node
+(`spec/GENESIS.md` — it "would shadow consensus-critical logic"), so only this method set exists:
+
+| method | args | notes |
+|---|---|---|
+| `bond` | `[*deployerId, amount, ret]` | derives the validator from the caller's `deployerId`, so **a key can only bond itself**. **Permissioned**: refuses a key not in the trusted set. |
+| `withdraw` | `[*deployerId, ret]` | **stages** an unbond — the validator stays bonded, active and earning until the next epoch boundary, then a `quarantineLength` escrow before payout. |
+| `trust` / `untrust` | `[*deployerId, targetPubkeyBytes, ret]` | a trusted stakeholder admits/removes a key; the only way a fresh key becomes bondable. |
+| `delegate` | `[*deployerId, operatorPubkeyBytes, amount, ret]` | **delegated stake** (law 57, #193): moves `amount` from the *signer's own* vault onto the **named** operator's `pos:bonds` entry. No commission, no admission step. |
+| `undelegate` | `[*deployerId, operatorPubkeyBytes, ret]` | **stages** an undelegation — mirrors `withdraw`: the principal keeps earning (and stays at risk) until the boundary, then a quarantine, then `principal + accrued rewards` to the delegator's own vault. |
+| `getBonds` | `[ret]` | `Map[ByteArray(65-byte key) → Int]`, the **aggregate** per key (own stake + delegations). |
+| `getActiveValidators` | `[ret]` | `Set[ByteArray]`. |
+| `getTrusted` | `[ret]` | `Set[ByteArray]`. |
+
+Every write returns `(Bool, Nil|String)` — the second element is the refusal reason. The
+epoch/validator/countdown view does **not** need rholang: `GET /api/v1/pos` (`getPosStatus`)
+answers `epochLength`, `quarantineLength`, `epoch`, `blocksUntilEpochBoundary`, `activeValidators`
+and `pendingWithdrawals` directly. The wallet's templates:
+
+- `fn_bond(amount)` / `fn_unbond()` → the write above, replying on the term's first `new`-bound name.
+- `fn_trust(pubkey_hex, op)` → `"…".hexToBytes()` as the target key.
+- `fn_pos_info(pubkey_hex)` → reads `getBonds` **and** `getTrusted` and looks the key up *in rholang*
+  (`getOrElse`/`contains`), so the caller never depends on how the node renders a `Map` with
+  `ByteArray` keys over JSON.
+
+See the **STAKING** screen (`src/modules/wallet/staking/Staking.tsx`). Delegation (`delegate` /
+`undelegate`) lets a key that holds REV stake it on a bonded operator it does not run — the
+delegator is the deploy's signer, the operator is a named key, and the delegator's principal shares
+the operator's slash risk and its pro-rata rewards.
+
+**Reading a delegation is delegator-scoped.** `GET /api/v1/pos/delegations?delegator=<hex>`
+(`getDelegations`) answers one key's positions across every operator it has staked with — amount,
+accrued rewards, and a staged undelegation's deadline and countdown. It is deliberately not a field
+on `PosStatus`: the ledger is unbounded in delegator count, so the read that is bounded is the one
+keyed by the delegator, and the operator-side listing is not offered. A malformed key answers 400
+rather than an empty list, because an empty list is a *true answer* about a delegator with no
+positions. In rholang the same read is `pos!("getDelegations", delegatorKey, *ret)`.
 
 ---
 

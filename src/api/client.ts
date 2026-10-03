@@ -8,11 +8,13 @@ import type {
     ApiStatus,
     BlockInfo,
     DataAtNameResponse,
+    DelegatorPosition,
     DeployExecStatus,
     DeployRequest,
     FaucetResponse,
     NodeCapabilities,
     PooledDeploys,
+    PosStatus,
     RhoDataResponse,
     RhoUnforg,
     ShardsResponse,
@@ -144,4 +146,25 @@ export async function getTxnList(url: string): Promise<TxnListResponse> {
     const res = await httpFetch("GET", api(url, "v1/txn"));
     ensureOk(res);
     return res.json as TxnListResponse;
+}
+
+// `GET /api/v1/pos` — the node's PoS read surface: the epoch, how far the next boundary is, the
+// active validator set, and every staged withdrawal with its countdown. Returns null on 404, so a
+// node that predates the route (added for AUDIT C148) degrades instead of erroring.
+export async function getPosStatus(url: string): Promise<PosStatus | null> {
+    const res = await httpFetch("GET", api(url, "v1/pos"));
+    if (res.status === 404) return null;
+    ensureOk(res);
+    return res.json as PosStatus;
+}
+
+// `GET /api/v1/pos/delegations?delegator=<hex>` — one delegator's positions, across every operator
+// it has staked with (law 57, #193). Returns null on 404 (a node that predates the route) so the
+// caller can degrade. The node answers 400 for a malformed key rather than an empty list — an empty
+// list is a *true answer* about a delegator with no positions, and `ensureOk` surfaces the 400.
+export async function getDelegations(url: string, delegatorHex: string): Promise<DelegatorPosition[] | null> {
+    const res = await httpFetch("GET", api(url, `v1/pos/delegations?delegator=${delegatorHex}`));
+    if (res.status === 404) return null;
+    ensureOk(res);
+    return res.json as DelegatorPosition[];
 }

@@ -4,7 +4,7 @@
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import blake from "blakejs";
 import { deployDataProtobufSerialize, signDeploy, decodeBase16 } from "../src/api/sign";
-import { deploy, propose, getShards, runTxn, getTxn, getTxnList, dataAtName } from "../src/api/client";
+import { deploy, propose, getShards, runTxn, getTxn, getTxnList, dataAtName, getPosStatus, getDelegations } from "../src/api/client";
 import * as bc from "../src/utils/blockchain";
 import * as rho from "../src/utils/rho";
 import { snippets, snippet_apply, snippet_meta } from "../src/modules/wallet/deploy/snippets";
@@ -160,6 +160,47 @@ async function main() {
     check(tf.includes("transfer") && tf.includes("deployerId"), "fn_transfer_funds uses native transfer + deployerId");
     check(!tf.includes("findOrCreate") && !tf.includes("deployerAuthKey"), "fn_transfer_funds has no Scala findOrCreate/deployerAuthKey");
 
+    // PoS templates. The node's bond signature is `bond(*deployerId, amount, ret)` — the old wallet
+    // template omitted deployerId, so a bond deploy could never match (rholang/src/system_processes.rs).
+    const bond = rho.fn_bond(100000000);
+    check(bond.includes('"bond"') && bond.includes("deployerId") && bond.includes("100000000"),
+        "fn_bond binds deployerId and passes amount to the native bond");
+    check(/bond"\s*,\s*\*deployerId/.test(bond), "fn_bond passes *deployerId as bond's first argument");
+
+    const unbond = rho.fn_unbond();
+    check(unbond.includes('"withdraw"') && unbond.includes("*deployerId"), "fn_unbond calls native withdraw with deployerId");
+
+    const trust = rho.fn_trust("04" + "ab".repeat(64), "trust");
+    check(trust.includes('"trust"') && trust.includes('.hexToBytes()'), "fn_trust calls native trust with a byte-array key");
+    const untrust = rho.fn_trust("04" + "ab".repeat(64), "untrust");
+    check(untrust.includes('"untrust"'), "fn_trust can also emit untrust");
+
+    // Delegated stake (law 57, #193). The landed call shape is
+    // `delegate(*deployerId, operatorKeyBytes, amount, ret)` / `undelegate(*deployerId, operatorKeyBytes, ret)`
+    // (rholang/src/system_processes.rs, examples/pos-delegate.rho): the delegator is the signer and
+    // the operator is a *named* byte key.
+    const OP_KEY = "04" + "ab".repeat(64);
+    const delegate = rho.fn_delegate(OP_KEY, 40);
+    check(/delegate"\s*,\s*\*deployerId/.test(delegate), "fn_delegate passes *deployerId first");
+    check(delegate.includes('.hexToBytes()') && delegate.includes("40"), "fn_delegate sends the operator key as bytes and the amount");
+
+    const undelegate = rho.fn_undelegate(OP_KEY);
+    check(/undelegate"\s*,\s*\*deployerId/.test(undelegate), "fn_undelegate passes *deployerId first");
+    check(undelegate.includes('.hexToBytes()'), "fn_undelegate sends the operator key as bytes");
+
+    // A *deploy*'s result is read from its `rho:rchain:deployId` channel, not the first private
+    // name (`spec/API-SCHEMA.md`, rule 3). A writer that replied on its first private name would show
+    // nothing in the deploy status, silently hiding the node's refusal — so pin the channel.
+    for (const [label, code] of [["fn_bond", bond], ["fn_unbond", unbond], ["fn_trust", trust], ["fn_delegate", delegate], ["fn_undelegate", undelegate]] as const) {
+        check(code.includes("rho:rchain:deployId") && /deployId!\(result\)/.test(code),
+            `${label} replies on the deployId channel so the deploy result is captured`);
+    }
+
+    const posInfo = rho.fn_pos_info(DEPLOYER_ADDR);
+    check(posInfo.includes("getBonds") && posInfo.includes("getTrusted"), "fn_pos_info reads both getBonds and getTrusted");
+    check(posInfo.includes("getOrElse"), "fn_pos_info looks the key up in rholang (no JSON map-key dependency)");
+    check(!posInfo.includes("deployId"), "fn_pos_info is explore-only (no deployId channel)");
+
     // 4. snippets + metadata
     const transferCode = snippet_apply("transfer", ["toAddr", "100000000"]);
     check(transferCode.includes('"toAddr"') && transferCode.includes("100000000"), "snippet_apply formats string + number args");
@@ -189,6 +230,49 @@ async function main() {
 
         globalThis.fetch = (async () => new Response(JSON.stringify("Success! Block abc created and added."), { status: 200 })) as typeof fetch;
         check((await propose("http://x")).includes("Block abc created"), "propose returns the plain string");
+
+        globalThis.fetch = (async () => new Response(JSON.stringify({
+            latestBlockNumber: 250, epochLength: 100, quarantineLength: 1000,
+            epoch: 2, blocksUntilEpochBoundary: 50,
+            activeValidators: ["04aa"],
+            pendingWithdrawals: [{ validator: "04aa", stagedAtBlock: 200, blocksRemaining: 400 }],
+        }), { status: 200 })) as typeof fetch;
+        const pos = await getPosStatus("http://x");
+        check(
+            pos?.epoch === 2 && pos.blocksUntilEpochBoundary === 50 && pos.pendingWithdrawals[0].blocksRemaining === 400,
+            "getPosStatus parses the /api/v1/pos response"
+        );
+
+        // `GET /api/v1/pos` was added for AUDIT C148; an older node 404s and the wallet must degrade
+        // rather than throw.
+        globalThis.fetch = (async () => new Response("not found", { status: 404 })) as typeof fetch;
+        check((await getPosStatus("http://x")) === null, "getPosStatus returns null when the node has no pos route");
+
+        // Delegator-scoped read (law 57, #193). The inner countdown field is `deadline`, not
+        // `stagedAtBlock` — the node renamed it for AUDIT C206 because the stored value already
+        // includes the quarantine, and calling it the request height made the countdown wrong.
+        globalThis.fetch = (async () => new Response(JSON.stringify([
+            { operator: "04aa", amount: 100, accruedRewards: 5, pendingUndelegation: { deadline: 1000, blocksRemaining: 400 } },
+            { operator: "04bb", amount: 200, accruedRewards: 0, pendingUndelegation: null },
+        ]), { status: 200 })) as typeof fetch;
+        const dels = await getDelegations("http://x", "04cc");
+        check(
+            dels?.length === 2 && dels[0].accruedRewards === 5
+                && dels[0].pendingUndelegation?.deadline === 1000
+                && dels[0].pendingUndelegation?.blocksRemaining === 400
+                && dels[1].pendingUndelegation === null,
+            "getDelegations parses the delegator-scoped response"
+        );
+
+        globalThis.fetch = (async () => new Response("not found", { status: 404 })) as typeof fetch;
+        check((await getDelegations("http://x", "04cc")) === null, "getDelegations returns null when the node has no delegations route");
+
+        // The node answers 400 for a malformed key rather than an empty list — an empty list is a
+        // true answer about a delegator with no positions, and must not be confused with a typo.
+        globalThis.fetch = (async () => new Response(JSON.stringify({ error: "delegator must be a hex-encoded 65-byte public key" }), { status: 400 })) as typeof fetch;
+        let delegations_threw = false;
+        try { await getDelegations("http://x", "zz"); } catch { delegations_threw = true; }
+        check(delegations_threw, "getDelegations throws on a malformed key rather than reporting no positions");
     } finally {
         globalThis.fetch = originalFetch;
     }

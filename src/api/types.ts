@@ -251,3 +251,66 @@ export interface TxnRecord {
 export interface TxnListResponse {
     inFlight: TxnRecord[];
 }
+
+// --- Proof of Stake (`GET /api/v1/pos`) ---
+//
+// The node's PoS read surface (`node/src/web/pos_read.rs`, AUDIT C148). `Validator` values are
+// lowercase hex of the 65-byte uncompressed secp256k1 key — the same shape as `NamedWallet.pubKey`.
+// The endpoint 404s on a node that predates it, so `getPosStatus` returns null rather than throwing.
+
+/** A withdrawal staged and waiting for its epoch boundary + quarantine (`pendingWithdrawers`). */
+export interface PendingWithdrawal {
+    validator: string;
+    stagedAtBlock: number;
+    /** Blocks still to be produced before the boundary pays it out; never negative. */
+    blocksRemaining: number;
+}
+
+export interface PosStatus {
+    latestBlockNumber: number;
+    /** `epochLength`; `<= 1` means every block is a boundary. */
+    epochLength: number;
+    /** Distance between a staged withdrawal and its payout. */
+    quarantineLength: number;
+    /** The number of boundaries behind the head; 0 while every block is a boundary. */
+    epoch: number;
+    /** Blocks to the next boundary; 0 exactly when the head is one. */
+    blocksUntilEpochBoundary: number;
+    activeValidators: string[];
+    pendingWithdrawals: PendingWithdrawal[];
+}
+
+/** The active account's PoS position, read via the `rho:rchain:pos` native methods. */
+export type PosInfoResult = {
+    /** This account's bond, or null when it is bonded to nothing. */
+    bonded: number | null;
+    /** Whether this account's key is in the trusted stakeholder set (may therefore bond). */
+    trusted: boolean;
+    error: string | null;
+};
+
+// --- Delegated stake (`GET /api/v1/pos/delegations?delegator=<hex>`) ---
+//
+// One delegator's positions, across every operator it has staked with (law 57, #193). Scoped to the
+// delegator because the ledger is unbounded in delegator count; the operator-scoped listing is not
+// offered by the node. The route is mounted unconditionally, so an older node 404s.
+
+/** An undelegation that has been requested and not yet acted on. */
+export interface PendingUndelegation {
+    /** The block the boundary may act on it at (the staged deadline, quarantine included). */
+    deadline: number;
+    /** Blocks to that deadline, floored at zero. */
+    blocksRemaining: number;
+}
+
+/** One operator a delegator has staked with. */
+export interface DelegatorPosition {
+    /** The operator's 65-byte public key, lowercase hex. */
+    operator: string;
+    /** The principal delegated to this operator and still attributed to the delegator. */
+    amount: number;
+    /** Reward accrued to this delegation and not yet paid. */
+    accruedRewards: number;
+    /** The staged exit, if one is in flight; null when nothing is staged. */
+    pendingUndelegation: PendingUndelegation | null;
+}

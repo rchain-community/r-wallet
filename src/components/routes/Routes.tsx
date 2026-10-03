@@ -18,6 +18,7 @@ const RoutesArray = [
 
 	{ path: "/balance", element: <Modules.Dashboard/> },
 	{ path: "/transfer", element: <Modules.Transfer/> },
+	{ path: "/staking", element: <Modules.Staking/> },
 	{ path: "/history", element: <Modules.History/> },
 	{ path: "/settings", element: <Modules.Settings/> },
 ];
