@@ -47,6 +47,57 @@ export async function propose(
 	return await (await rnode).propose(url);
 }
 
+// --- Proof of Stake -----------------------------------------------------------
+
+export async function pos_status(ctx: NodeContext) {
+	const { getPosStatus } = await import("../api/client");
+	return await getPosStatus(ctx.get_readonly_url());
+}
+
+export async function check_pos(ctx: NodeContext, pubkey_hex: string) {
+	let url = ctx.get_readonly_url();
+	return await (await rnode).check_pos(url, pubkey_hex);
+}
+
+export async function delegations(ctx: NodeContext, delegator_pubkey_hex: string) {
+	const { getDelegations } = await import("../api/client");
+	return await getDelegations(ctx.get_readonly_url(), delegator_pubkey_hex);
+}
+
+export async function bond(ctx: NodeContext, amount: number) {
+	if (!user) { return null; }
+	let url = ctx.get_validator_url();
+	return await (await rnode).bond(url, user, amount);
+}
+
+export async function unbond(ctx: NodeContext) {
+	if (!user) { return null; }
+	let url = ctx.get_validator_url();
+	return await (await rnode).unbond(url, user);
+}
+
+export async function trust_key(
+	ctx: NodeContext,
+	pubkey_hex: string,
+	op: "trust" | "untrust"
+) {
+	if (!user) { return null; }
+	let url = ctx.get_validator_url();
+	return await (await rnode).trust_key(url, user, pubkey_hex, op);
+}
+
+export async function delegate(ctx: NodeContext, operator_pubkey_hex: string, amount: number) {
+	if (!user) { return null; }
+	let url = ctx.get_validator_url();
+	return await (await rnode).delegate(url, user, operator_pubkey_hex, amount);
+}
+
+export async function undelegate(ctx: NodeContext, operator_pubkey_hex: string) {
+	if (!user) { return null; }
+	let url = ctx.get_validator_url();
+	return await (await rnode).undelegate(url, user, operator_pubkey_hex);
+}
+
 
 export async function explore_code(
 	ctx: NodeContext,

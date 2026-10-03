@@ -1091,6 +1091,97 @@ export const snippets = {
             "}",
         fields: [num_field("height")]
     },
+    posStatus: {
+        code:
+            "[pubkey] => {\n" +
+            "  new ret, PoSCh, rl(`rho:registry:lookup`), bondsCh, trustedCh in {\n" +
+            "    rl!(`rho:rchain:pos`, *PoSCh) |\n" +
+            "    for (@(_, PoS) <- PoSCh) {\n" +
+            '      @PoS!("getBonds", *bondsCh) |\n' +
+            '      @PoS!("getTrusted", *trustedCh) |\n' +
+            "      for (@bonds <- bondsCh & @trusted <- trustedCh) {\n" +
+            "        ret!((bonds.getOrElse(pubkey.hexToBytes(), -1), trusted.contains(pubkey.hexToBytes())))\n" +
+            "      }\n" +
+            "    }\n" +
+            "  }\n" +
+            "}",
+        fields: [str_field("pubkey")]
+    },
+    bondValidator: {
+        code:
+            "[amount] => {\n" +
+            "  new retCh, PoSCh, rl(`rho:registry:lookup`), deployerId(`rho:rchain:deployerId`), deployId(`rho:rchain:deployId`) in {\n" +
+            "    rl!(`rho:rchain:pos`, *PoSCh) |\n" +
+            "    for (@(_, PoS) <- PoSCh) {\n" +
+            '      @PoS!("bond", *deployerId, amount, *retCh) |\n' +
+            "      for (@result <- retCh) {\n" +
+            "        deployId!(result)\n" +
+            "      }\n" +
+            "    }\n" +
+            "  }\n" +
+            "}",
+        fields: [num_field("amount")]
+    },
+    unbondValidator: {
+        code:
+            "[] => {\n" +
+            "  new retCh, PoSCh, rl(`rho:registry:lookup`), deployerId(`rho:rchain:deployerId`), deployId(`rho:rchain:deployId`) in {\n" +
+            "    rl!(`rho:rchain:pos`, *PoSCh) |\n" +
+            "    for (@(_, PoS) <- PoSCh) {\n" +
+            '      @PoS!("withdraw", *deployerId, *retCh) |\n' +
+            "      for (@result <- retCh) {\n" +
+            "        deployId!(result)\n" +
+            "      }\n" +
+            "    }\n" +
+            "  }\n" +
+            "}",
+        fields: []
+    },
+    trustValidator: {
+        code:
+            "[pubkey] => {\n" +
+            "  new retCh, PoSCh, rl(`rho:registry:lookup`), deployerId(`rho:rchain:deployerId`), deployId(`rho:rchain:deployId`) in {\n" +
+            "    rl!(`rho:rchain:pos`, *PoSCh) |\n" +
+            "    for (@(_, PoS) <- PoSCh) {\n" +
+            '      @PoS!("trust", *deployerId, pubkey.hexToBytes(), *retCh) |\n' +
+            "      for (@result <- retCh) {\n" +
+            "        deployId!(result)\n" +
+            "      }\n" +
+            "    }\n" +
+            "  }\n" +
+            "}",
+        fields: [str_field("pubkey")]
+    },
+    delegateStake: {
+        code:
+            "[operator, amount] => {\n" +
+            "  new retCh, PoSCh, rl(`rho:registry:lookup`), deployerId(`rho:rchain:deployerId`), deployId(`rho:rchain:deployId`) in {\n" +
+            "    rl!(`rho:rchain:pos`, *PoSCh) |\n" +
+            "    for (@(_, PoS) <- PoSCh) {\n" +
+            '      @PoS!("delegate", *deployerId, operator.hexToBytes(), amount, *retCh) |\n' +
+            "      for (@result <- retCh) {\n" +
+            "        deployId!(result)\n" +
+            "      }\n" +
+            "    }\n" +
+            "  }\n" +
+            "}",
+        fields: [str_field("operator"), num_field("amount")]
+    },
+    undelegateStake: {
+        code:
+            "[operator] => {\n" +
+            "  new retCh, PoSCh, rl(`rho:registry:lookup`), deployerId(`rho:rchain:deployerId`), deployId(`rho:rchain:deployId`) in {\n" +
+            "    rl!(`rho:rchain:pos`, *PoSCh) |\n" +
+            "    for (@(_, PoS) <- PoSCh) {\n" +
+            '      @PoS!("undelegate", *deployerId, operator.hexToBytes(), *retCh) |\n' +
+            "      for (@result <- retCh) {\n" +
+            "        deployId!(result)\n" +
+            "      }\n" +
+            "    }\n" +
+            "  }\n" +
+            "}",
+        fields: [str_field("operator")]
+    },
 } satisfies Record<string, Snippet>;
 
 // Editor help metadata for each snippet: a short description, optional
@@ -1290,6 +1381,40 @@ export const snippet_meta: Record<keyof typeof snippets, SnippetMeta> = {
         description: "Towers of Hanoi recursion demo.",
         purpose: "A classic recursive algorithm, useful for learning rholang.",
         defaults: { height: "3" },
+    },
+    posStatus: {
+        description: "Read a validator's bond and whether its key is trusted.",
+        purpose: "Check a PoS position before bonding or unbonding.",
+        fieldHelp: { pubkey: "The 65-byte validator public key, bare lowercase hex (04-prefixed)." },
+    },
+    bondValidator: {
+        description: "Bond REV to become a validator (self-bond).",
+        purpose: "Stake REV from your own vault. Permissioned: the node refuses a key that is not trusted.",
+        fieldHelp: { amount: "Amount in drops (1 REV = 100,000,000 drops)." },
+        defaults: { amount: "100000000" },
+    },
+    unbondValidator: {
+        description: "Stage a withdrawal (unbond) of your bond.",
+        purpose: "Stop validating. You stay bonded and earning until the next epoch boundary, then a quarantine elapses before payout.",
+    },
+    trustValidator: {
+        description: "Admit a validator public key into the trusted set.",
+        purpose: "Only a trusted stakeholder may do this; it is the only way a new key becomes bondable.",
+        fieldHelp: { pubkey: "The 65-byte validator public key, bare lowercase hex (04-prefixed)." },
+    },
+    delegateStake: {
+        description: "Delegate REV onto a validator you do not run.",
+        purpose: "Stake on a bonded operator and share its rewards pro-rata (and its slash risk). No trust step needed.",
+        fieldHelp: {
+            operator: "The operator's 65-byte validator public key, bare lowercase hex (04-prefixed).",
+            amount: "Amount in drops (1 REV = 100,000,000 drops).",
+        },
+        defaults: { amount: "100000000" },
+    },
+    undelegateStake: {
+        description: "Stage an undelegation from a validator.",
+        purpose: "Withdraw your delegated principal. Staged until the next epoch boundary, then a quarantine before payout with accrued rewards.",
+        fieldHelp: { operator: "The operator's 65-byte validator public key, bare lowercase hex (04-prefixed)." },
     },
 };
 

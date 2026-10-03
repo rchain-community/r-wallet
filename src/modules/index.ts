@@ -10,5 +10,6 @@ export * from './wallet/deploy/Deploy';
 export * from './wallet/deploy/snippets';
 export * from './wallet/history/History';
 export * from './wallet/settings/Settings';
+export * from './wallet/staking/Staking';
 export * from './wallet/transfer/Transfer';
 

@@ -6,7 +6,7 @@
 
 import * as u from './utils';
 import * as rho from './rho';
-import { add_tx } from './transactions';
+import { add_tx, type TxKind } from './transactions';
 import {
     deploy as apiDeploy,
     deployStatus,
@@ -14,7 +14,7 @@ import {
     getStatus,
     propose as apiPropose,
 } from '../api/client';
-import { unwrap_payload } from '../api/rho-json';
+import { rhoExprToJson, unwrap_payload } from '../api/rho-json';
 import { signDeploy } from '../api/sign';
 import type {
     BalanceResult,
@@ -22,6 +22,7 @@ import type {
     DeployRequest,
     DeployResult,
     ExploreResult,
+    PosInfoResult,
     ProposeResult,
     TransferResult,
 } from '../api/types';
@@ -114,11 +115,16 @@ export async function transfer(
     return { deployId, error: null };
 }
 
-export async function deploy(
+// Shared submit-and-track path for every signed operation: sign + POST the deploy, record a pending
+// transaction of `kind`, then poll `deploy-status` to a terminal state. `deploy`, `bond`, `unbond`
+// and `trust_key` differ only in the term and the transaction label.
+async function run_deploy(
     node_url: string,
     wallet: u.NamedWallet,
     code: string,
     phlo_limit: number,
+    kind: TxKind,
+    description: string,
     attachments: string[] = []
 ): Promise<DeployResult> {
     u.wallet_normalize(wallet);
@@ -133,10 +139,8 @@ export async function deploy(
 
     add_tx({
         deployId,
-        kind: "deploy",
-        description: attachments.length > 0
-            ? `Deploy rholang (+${attachments.length} attachment${attachments.length === 1 ? "" : "s"})`
-            : "Deploy rholang",
+        kind,
+        description,
         timestamp: Date.now(),
         status: "pending",
     });
@@ -190,6 +194,115 @@ export async function deploy(
         expr: null,
         error: `Timed out waiting for deploy result (last status: "${last_status}").`,
     };
+}
+
+export async function deploy(
+    node_url: string,
+    wallet: u.NamedWallet,
+    code: string,
+    phlo_limit: number,
+    attachments: string[] = []
+): Promise<DeployResult> {
+    return run_deploy(
+        node_url, wallet, code, phlo_limit, "deploy",
+        attachments.length > 0
+            ? `Deploy rholang (+${attachments.length} attachment${attachments.length === 1 ? "" : "s"})`
+            : "Deploy rholang",
+        attachments
+    );
+}
+
+// --- Proof of Stake -----------------------------------------------------------
+// Self-bond/unbond via the native `rho:rchain:pos`. Both take the caller's own `deployerId`, so
+// `wallet` must be a signing account (not MetaMask). These return the deploy's result, whose first
+// element is the PoS reply `(Bool, Nil|String)` — the caller surfaces the refusal reason verbatim.
+
+export async function bond(
+    node_url: string,
+    wallet: u.NamedWallet,
+    amount: number
+): Promise<DeployResult> {
+    return run_deploy(
+        node_url, wallet, rho.fn_bond(amount), 500000, "bond",
+        `Bond ${amount / 100000000} REV`
+    );
+}
+
+export async function unbond(
+    node_url: string,
+    wallet: u.NamedWallet
+): Promise<DeployResult> {
+    return run_deploy(node_url, wallet, rho.fn_unbond(), 500000, "unbond", "Stage withdrawal (unbond)");
+}
+
+// Admit (`trust`) or remove (`untrust`) a 65-byte validator public key. Only a trusted stakeholder
+// may do this; it is the only way a fresh key becomes bondable.
+export async function trust_key(
+    node_url: string,
+    wallet: u.NamedWallet,
+    pubkey_hex: string,
+    op: "trust" | "untrust"
+): Promise<DeployResult> {
+    const label = op === "trust" ? "Trust" : "Untrust";
+    return run_deploy(
+        node_url, wallet, rho.fn_trust(pubkey_hex, op), 500000, "trust",
+        `${label} key ${pubkey_hex.slice(0, 10)}…`
+    );
+}
+
+// Delegate `amount` REV from this account's own vault onto `operator_pubkey`'s bond (law 57). Any
+// bonded operator is delegable-to; no trust or admission step is needed to delegate.
+export async function delegate(
+    node_url: string,
+    wallet: u.NamedWallet,
+    operator_pubkey_hex: string,
+    amount: number
+): Promise<DeployResult> {
+    return run_deploy(
+        node_url, wallet, rho.fn_delegate(operator_pubkey_hex, amount), 500000, "delegate",
+        `Delegate ${amount / 100000000} REV to ${operator_pubkey_hex.slice(0, 10)}…`
+    );
+}
+
+// Stage an undelegation from `operator_pubkey`. Staged until the boundary, then quarantined, then
+// paid `principal + accrued rewards` to this account's vault.
+export async function undelegate(
+    node_url: string,
+    wallet: u.NamedWallet,
+    operator_pubkey_hex: string
+): Promise<DeployResult> {
+    return run_deploy(
+        node_url, wallet, rho.fn_undelegate(operator_pubkey_hex), 500000, "undelegate",
+        `Undelegate from ${operator_pubkey_hex.slice(0, 10)}…`
+    );
+}
+
+// Read this account's PoS position: its bond (null when unbonded) and whether its key is trusted.
+// Explores `fn_pos_info`, whose reply is a scalar pair `(Int, Bool)`.
+export async function check_pos(
+    readonly_url: string,
+    pubkey_hex: string
+): Promise<PosInfoResult> {
+    const code = rho.fn_pos_info(pubkey_hex);
+
+    try {
+        const res = await exploreDeploy(readonly_url, code);
+        const first = res.expr?.[0];
+        if (!first) {
+            return { bonded: null, trusted: false, error: "Unknown error" };
+        }
+
+        const json = rhoExprToJson(first);
+        if (!Array.isArray(json)) {
+            return { bonded: null, trusted: false, error: "Unexpected PoS read result" };
+        }
+
+        const [bonded_v, trusted_v] = json;
+        const bonded = typeof bonded_v === "number" && bonded_v >= 0 ? bonded_v : null;
+        return { bonded, trusted: trusted_v === true, error: null };
+    } catch (err) {
+        return { bonded: null, trusted: false, error: String(err) };
+    }
 }
 
 export async function explore(

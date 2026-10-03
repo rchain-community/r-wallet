@@ -226,6 +226,36 @@ const CASES: Record<string, Case> = {
         op: "explore",
         explore_only: "the snippet's own source says `// towers of hanoi - use EXPLORE`",
     },
+
+    // Proof of Stake. `posStatus` is read-only (getBonds/getTrusted take no deployerId) and answers
+    // `(-1, false)` for a key that is bonded to nothing, so its golden is chain-independent. The
+    // three writers all read `rho:rchain:deployerId`, so they would auto-route to the deploy path —
+    // but a bond/unbond/trust mutates consensus state, so they are excluded and exercised manually
+    // against a devnet (see the plan's verification section).
+    posStatus: {
+        op: "explore",
+        args: { pubkey: "04" + "00".repeat(64) },
+    },
+    bondValidator: {
+        op: "excluded",
+        note: "bonds REV and mutates PoS state; run manually against a devnet",
+    },
+    unbondValidator: {
+        op: "excluded",
+        note: "stages an unbond and mutates PoS state; run manually against a devnet",
+    },
+    trustValidator: {
+        op: "excluded",
+        note: "admits a key to the trusted set; run manually against a devnet as a trusted stakeholder",
+    },
+    delegateStake: {
+        op: "excluded",
+        note: "moves REV into the staking vault and mutates PoS state; run manually against a devnet",
+    },
+    undelegateStake: {
+        op: "excluded",
+        note: "stages an undelegation and mutates PoS state; run manually against a devnet",
+    },
 };
 
 // Referenced by the deploy case; kept here so the attachment is spelled out.

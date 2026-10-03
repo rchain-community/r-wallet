@@ -51,7 +51,7 @@ domain results), `src/api/sign.ts` (secp256k1 deploy signing), `src/api/rho-json
 (key/address derivation), `src/utils/networks.ts` (nodes), `src/config/branding.ts`
 (`BRAND`).
 
-Routes: `/` editor, `/access` landing, `/balance`, `/transfer`, `/history`, `/settings`.
+Routes: `/` editor, `/access` landing, `/balance`, `/transfer`, `/staking`, `/history`, `/settings`.
 The `/access` landing page carries the **TESTNET WALLET** card (see
 `src/config/playground.ts`): it loads a pre-funded testnet account and reveals its
 address and private key, then can adopt it as the active wallet.
@@ -76,6 +76,8 @@ One convention in `client.ts`: `httpFetch(METHOD, path, body?) → ensureOk → 
 | `runTxn` | `POST /api/v1/txn` (gateway only; 404 otherwise) |
 | `getTxn` | `GET /api/v1/txn/:txnId` (gateway only) |
 | `getTxnList` | `GET /api/v1/txn` (gateway only) |
+| `getPosStatus` | `GET /api/v1/pos` (PoS read surface; `null` on 404) |
+| `getDelegations` | `GET /api/v1/pos/delegations?delegator=<hex>` (delegator-scoped; `null` on 404) |
 
 Wire facts: serde enums are **externally tagged** *and their payloads are field-structs*, so
 `ExprInt(42)` is `{"ExprInt":{"data":42}}` — measured on a live node, and the same shape the
@@ -99,6 +101,24 @@ signed protobuf** (field 12) — omit the field for an ordinary deploy.
    `getBalance` / `transfer` (derives `from` from `*deployerId`) / `findOrCreate`.
    Do **not** reintroduce Scala-era `findOrCreate(addr)` / `balance` /
    `deployerAuthKey` rholang. `src/utils/rho.ts` is already correct.
+2b. **Native `pos`, not `Pos.rhox`** — `rho:rchain:pos` is native too, and the
+   interpreted `Pos.rhox` is **not installed** (`spec/GENESIS.md`). Only these methods
+   exist: `bond(*deployerId, amount, ret)`, `withdraw(*deployerId, ret)`,
+   `delegate(*deployerId, operatorKeyBytes, amount, ret)`,
+   `undelegate(*deployerId, operatorKeyBytes, ret)`, `trust`/`untrust(*deployerId, keyBytes, ret)`,
+   `getBonds`, `getActiveValidators`, `getTrusted`, `getDelegations`. **Bonding is
+   permissioned** (trusted set) and a key can only bond itself; **delegation is not** — any
+   bonded operator is delegable-to, and the delegator is the deploy signer (law 57, #193).
+   Read epoch/validator/withdrawal state from `GET /api/v1/pos`, and a delegator's own
+   positions from `GET /api/v1/pos/delegations?delegator=<hex>` — the read is
+   **delegator-scoped** (the ledger is unbounded in delegator count, so no operator-side
+   listing exists). See the STAKING screen (`src/modules/wallet/staking/Staking.tsx`).
+   **Reply channel matters** (`spec/API-SCHEMA.md`, rule 3): an *explore* result is
+   read from the term's first `new`-bound name, but a *deploy*'s result is read from
+   its `rho:rchain:deployId` channel. A state-changing template must bind
+   `deployId(\`rho:rchain:deployId\`)` and send there, or its result — including the
+   node's refusal reason — is silently absent. `fn_bond`/`fn_unbond`/`fn_trust` do;
+   `fn_pos_info` (explore-only) replies on its first private name.
 3. **No `any`** in the API-touching path (`client.ts`, `rnode.ts`, `rho-json.ts`,
    `faucet.ts`). Add DTOs/`*Result` types to `src/api/types.ts`.
 4. **No deployer private key in the wallet** — the devnet faucet signs server-side;
