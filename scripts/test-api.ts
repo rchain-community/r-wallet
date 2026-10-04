@@ -180,13 +180,20 @@ async function main() {
     }
     check(faucetDone, "faucet deploy reached a terminal state");
 
-    const targetBal = await exploreDeploy(HTTP, rho.fn_check_balance(target!.revAddr));
-    // Unwrap the variant payload before comparing: the wire carries `{"ExprInt":{"data":N}}`, so the
-    // raw `ExprInt` is an object here and `{} > 0` is false — a funded target would have been
-    // reported as unfunded. Nothing type-checked this file when the envelope landed, which is how it
-    // survived; `tsconfig.scripts.json` now covers `scripts/**`.
-    const fundedAmt = targetBal.expr[0] && "ExprInt" in targetBal.expr[0] ? unwrap_payload(targetBal.expr[0].ExprInt) : 0;
-    check(fundedAmt > 0, `faucet funded target (balance=${fundedAmt}${fundedAmt === 0 ? " — node-side revVault transfer persistence bug" : ""})`);
+    // Retry the balance read: the drip is processed in a block, but a read can still land on a tip
+    // that predates it — measured against a local devnet (2026-10-04), the first two reads returned 0
+    // and the third 30000000. A single read here is a race, not a node bug.
+    let fundedAmt = 0;
+    for (let i = 0; i < 8 && !(fundedAmt > 0); i++) {
+        const targetBal = await exploreDeploy(HTTP, rho.fn_check_balance(target!.revAddr));
+        // Unwrap the variant payload before comparing: the wire carries `{"ExprInt":{"data":N}}`, so the
+        // raw `ExprInt` is an object here and `{} > 0` is false — a funded target would have been
+        // reported as unfunded. Nothing type-checked this file when the envelope landed, which is how it
+        // survived; `tsconfig.scripts.json` now covers `scripts/**`.
+        fundedAmt = targetBal.expr[0] && "ExprInt" in targetBal.expr[0] ? unwrap_payload(targetBal.expr[0].ExprInt) : 0;
+        if (!(fundedAmt > 0)) await sleep(1500);
+    }
+    check(fundedAmt > 0, `faucet funded target (balance=${fundedAmt})`);
 
     // 10. capabilities + pooled deploys
     const caps = await getCapabilities(HTTP);

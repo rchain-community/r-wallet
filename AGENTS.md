@@ -52,9 +52,10 @@ domain results), `src/api/sign.ts` (secp256k1 deploy signing), `src/api/rho-json
 (`BRAND`).
 
 Routes: `/` editor, `/access` landing, `/balance`, `/transfer`, `/staking`, `/history`, `/settings`.
-The `/access` landing page carries the **TESTNET WALLET** card (see
-`src/config/playground.ts`): it loads a pre-funded testnet account and reveals its
-address and private key, then can adopt it as the active wallet.
+The `/access` landing page carries the **LOGIN WITH FAUCET** card (see
+`src/utils/faucet-login.ts`): it generates a fresh testnet wallet, downloads its keystore,
+and funds it from the selected node's faucet. A node that advertises `capabilities.faucet:false`
+shows a notice in the card's slot (and on the dashboard) instead of the button.
 
 ## API contract (summary)
 
