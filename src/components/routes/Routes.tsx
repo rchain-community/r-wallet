@@ -14,7 +14,6 @@ const RoutesArray = [
 	{ path: "/access/mnemonic", element: <Modules.AccessMnemonic/> },
 	{ path: "/access/keystore", element: <Modules.AccessKeystore/> },
 	{ path: "/access/private-key", element: <Modules.AccessPrivateKey/> },
-	{ path: "/access/local", element: <Modules.AccessLocal/> },
 
 	{ path: "/balance", element: <Modules.Dashboard/> },
 	{ path: "/transfer", element: <Modules.Transfer/> },

@@ -1,6 +1,5 @@
 export * from './landing/Landing';
 export * from './wallet/access/Access-Keystore';
-export * from './wallet/access/Access-Local';
 export * from './wallet/access/Access-Mnemonic';
 export * from './wallet/access/Access-Private-Key';
 export * from './wallet/create/Create-Keystore';

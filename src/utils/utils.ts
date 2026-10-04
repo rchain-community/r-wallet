@@ -71,8 +71,6 @@ export interface UserWallet extends PrivateWallet {
 export type UserMetaMaskWallet = NamedWallet & MetaMaskWallet;
 
 interface LocallyStored {
-	"user-list": UserWallet[],
-	"wallet-list": NamedWallet[],
 	"custom-nodes": nw.Named_Node[],
 	"tx-list": TransactionRecord[]
 };

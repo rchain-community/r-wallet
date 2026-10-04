@@ -5,7 +5,6 @@ export * from './modals/ModalBase';
 export * from './modals/Deploy-Help-Modal';
 export * from './modals/Pass-Confirm-Modal';
 export * from './modals/Snippet-Explain-Modal';
-export * from './modals/Wallet-Lock-Modal';
 export * from './navigation/Navigation';
 export * from './node-picker/NodePicker';
 export * from './notification-host/NotifHost';

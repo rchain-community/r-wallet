@@ -18,7 +18,6 @@ declare global {
 	function set_layout(layout_classes: string): void;
 };
 
-g.restore_user_list();
 tx.restore_tx_list();
 
 let notif_id = 0;
