@@ -1,13 +1,14 @@
-import { PLAYGROUND_ACCOUNTS } from "../../../config/playground";
+import { GENESIS_ADDRESSES } from "../../../config/genesis-addresses";
 
-// The initial roll as a rholang set literal, built from the published genesis accounts.
+// The initial roll as a rholang set literal, built from the genesis accounts' addresses (see
+// `genesis-addresses.ts` for why the app carries the addresses, not the keys).
 //
 // The chain holds no roll *set* to read: the directory's `Roll` slot answers the roll class
 // **capability**, and the class's `"make"` takes the set from the caller (measured — `"make"` with a
 // set answers `{"self": <cap>, "uri": "rho:id:…"}`). So a member directory is built from a set the
 // client supplies, and the genesis accounts are the only set the wallet can honestly claim is the
 // initial roll. See `getRoll`'s note for the read side, and the AUDIT entry this came from.
-const GENESIS_ROLL_SET = `Set(${PLAYGROUND_ACCOUNTS.map(a => `"${a.revAddr}"`).join(", ")})`;
+const GENESIS_ROLL_SET = `Set(${GENESIS_ADDRESSES.map(a => `"${a}"`).join(", ")})`;
 
 type Field = {
     name: string;

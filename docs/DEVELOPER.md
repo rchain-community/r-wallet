@@ -34,12 +34,13 @@ Supporting modules:
 | `src/utils/blockchain.ts` | key/address derivation (keystore, mnemonic, private key, MetaMask) |
 | `src/utils/networks.ts` | node definitions + URL helpers |
 | `src/config/branding.ts` | `BRAND` (name/ticker/subunit) — use this, don't hardcode strings |
-| `src/config/playground.ts` | pre-funded testnet accounts + `pick_random_account` for the landing card |
-| `src/utils/playground.ts` | `activate_account`: derive a testnet account, set it active, route to `/balance` |
+| `src/config/playground.ts` | genesis-funded testnet accounts (genesis roll set + bootstrap deployer key) |
+| `src/utils/faucet-login.ts` | `login_with_faucet`: generate a wallet, save its keystore, fund it from the faucet |
 
 Routes: `/` (editor), `/access` (landing), `/balance`, `/transfer`, `/staking`,
-`/history`, `/settings`, plus `/access/*` and `/create/*`. The landing page's **TESTNET WALLET**
-card loads a pre-funded testnet account and reveals its address and private key.
+`/history`, `/settings`, plus `/access/*` and `/create/*`. The landing page's **LOGIN WITH FAUCET**
+card generates a fresh testnet wallet, downloads its keystore, and funds it from the selected
+node's faucet; a node that serves no faucet shows a notice instead.
 
 ---
 

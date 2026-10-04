@@ -61,8 +61,8 @@ Then in the app, select the `localhost-0` node.
 
 `/` (editor) · `/access` (wallet access) · `/balance` · `/transfer` · `/history` · `/settings`
 
-The `/access` page also carries a **TESTNET WALLET** card, which loads a pre-funded
-testnet account and shows its address and private key.
+The `/access` page also carries a **LOGIN WITH FAUCET** card: it generates a fresh testnet
+wallet, downloads its keystore, and funds it from the selected node's faucet.
 
 ## Build
 

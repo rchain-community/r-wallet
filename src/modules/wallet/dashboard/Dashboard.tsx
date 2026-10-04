@@ -157,6 +157,10 @@ export function Dashboard() {
             </div>
         </div>
 
+        {node_context.capabilities && !node_context.capabilities.faucet && (
+            <p className="warning mt-4">No faucet on this node.</p>
+        )}
+
         {node_context.capabilities?.faucet && (
             <div className="mt-4 flex flex-col gap-2">
                 <p className="text-xs text-yellow-600 dark:text-yellow-400">DEV/TEST ONLY — funds from the devnet deployer.</p>

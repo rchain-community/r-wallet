@@ -9,7 +9,8 @@ import * as bc from "../src/utils/blockchain";
 import * as rho from "../src/utils/rho";
 import { snippets, snippet_apply, snippet_meta } from "../src/modules/wallet/deploy/snippets";
 import { tx_list, add_tx, refresh_tx_states } from "../src/utils/transactions";
-import { PLAYGROUND_ACCOUNTS, pick_random_account } from "../src/config/playground";
+import { PLAYGROUND_ACCOUNTS } from "../src/config/playground";
+import { GENESIS_ADDRESSES } from "../src/config/genesis-addresses";
 import type { DeployData, DeployRequest } from "../src/api/types";
 
 const hex_of = (bytes: Uint8Array) => Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
@@ -384,31 +385,10 @@ async function main() {
         new Set(PLAYGROUND_ACCOUNTS.map(a => a.name)).size === PLAYGROUND_ACCOUNTS.length,
         "playground account names are unique"
     );
-
-    // 12. testnet wallet: the card's random pick
-    check(PLAYGROUND_ACCOUNTS.length > 0, `testnet accounts: ${PLAYGROUND_ACCOUNTS.length} available`);
     check(
-        pick_random_account(undefined, () => 0)?.revAddr === PLAYGROUND_ACCOUNTS[0].revAddr,
-        "pick with rand=0 selects the first account"
-    );
-    check(
-        pick_random_account(undefined, () => 0.999)?.revAddr === PLAYGROUND_ACCOUNTS[PLAYGROUND_ACCOUNTS.length - 1].revAddr,
-        "pick with rand~1 selects the last account"
-    );
-    check(
-        pick_random_account(undefined, () => 1)?.revAddr === PLAYGROUND_ACCOUNTS[0].revAddr,
-        "an out-of-range rand is clamped instead of yielding undefined"
-    );
-
-    const excluded_addr = PLAYGROUND_ACCOUNTS[0].revAddr;
-    let avoided = true;
-    for (let i = 0; i < 50; i++) {
-        if (pick_random_account(excluded_addr)?.revAddr === excluded_addr) avoided = false;
-    }
-    check(avoided, "the excluded account is never re-picked while others remain");
-    check(
-        pick_random_account("1111notARealAddress", () => 0)?.revAddr === PLAYGROUND_ACCOUNTS[0].revAddr,
-        "excluding an address outside the table is a no-op"
+        GENESIS_ADDRESSES.length === PLAYGROUND_ACCOUNTS.length &&
+        GENESIS_ADDRESSES.every((a, i) => a === PLAYGROUND_ACCOUNTS[i].revAddr),
+        "genesis-addresses.ts matches the account addresses (app bundle carries no keys)"
     );
 
     console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);

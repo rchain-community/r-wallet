@@ -1,26 +1,19 @@
-// Pre-funded testnet wallets, offered alongside the faucet so a visitor can start
-// from a funded account without waiting on a drip.
+// Genesis-funded testnet accounts — the *keys* half. Node-only: nothing under `src/modules` or
+// `src/components` may import this, or the private keys land in the browser bundle. The app-facing
+// addresses live in `genesis-addresses.ts`; `npm run test:unit` fails if the two drift apart.
 //
-// WARNING: these private keys are published in client source on purpose, so every
-// visitor to a deployed build can read them and spend these balances. The funds are
-// disposable testnet REV and nothing else. Never reuse these keys anywhere, and never
-// put anything of value on this network.
+// The first key is the remote deployer used by `scripts/bootstrap-rgov.ts` and by the API tests.
+// These keys are published in the repo on purpose (the funds are disposable testnet REV), but they
+// are still keys: never put anything of value on this network, and never reuse them anywhere.
 //
-// The addresses are each account's REV address as derived from its key; `npm run
-// test:unit` re-derives them and fails if a key and address drift apart.
+// Each `revAddr` is its account's REV address as derived from `privKey`; `npm run test:unit`
+// re-derives them and fails if a key and address drift apart.
 
 export interface PlaygroundAccount {
 	name: string;
 	privKey: string;
 	revAddr: string;
 }
-
-/** Network the balances live on — shown in the UI so nobody expects funds elsewhere. */
-// These accounts are genesis-funded on BOTH rhobot chains (the playground and
-// the testnet), so the label names the operator rather than one chain —
-// "Rhobot testnet" would have been wrong on the playground, which is where the
-// app points by default.
-export const PLAYGROUND_NETWORK = "Rhobot";
 
 export const PLAYGROUND_ACCOUNTS: PlaygroundAccount[] = [
 	{
@@ -39,26 +32,3 @@ export const PLAYGROUND_ACCOUNTS: PlaygroundAccount[] = [
 		revAddr: "1111bRUvDCJ2ZtDMtCYU1ScW19uTRbVd9VHUmtPunMEQzS4oSxEkY",
 	},
 ];
-
-/**
- * Pick a random account, avoiding `exclude_revAddr` when there is another option (so
- * clicking twice in a row doesn't hand back the same wallet). `rand` is injectable so
- * the unit suite can pin the selection deterministically.
- */
-export function pick_random_account(
-	exclude_revAddr?: string,
-	rand: () => number = Math.random
-): PlaygroundAccount | null {
-	if (PLAYGROUND_ACCOUNTS.length === 0) { return null; }
-
-	let candidates = PLAYGROUND_ACCOUNTS;
-	if (exclude_revAddr) {
-		let remaining = PLAYGROUND_ACCOUNTS.filter(a => a.revAddr !== exclude_revAddr);
-		if (remaining.length > 0) { candidates = remaining; }
-	}
-
-	let index = Math.floor(rand() * candidates.length);
-	if (!(index >= 0) || index >= candidates.length) { index = 0; }
-
-	return candidates[index];
-}

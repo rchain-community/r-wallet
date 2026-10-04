@@ -1,28 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as Components from 'components';
-import { useLayout } from 'Context';
-import { Icon, icon } from 'assets';
+import { useLayout, useNodes } from 'Context';
+import { icon } from 'assets';
 import * as u from 'utils';
 import { BRAND } from "../../config/branding";
-import {
-    PLAYGROUND_ACCOUNTS,
-    PLAYGROUND_NETWORK,
-    pick_random_account,
-    type PlaygroundAccount,
-} from "../../config/playground";
 
 export function Landing() {
     let navigate = useNavigate();
     let layout = useLayout();
+    let node_context = useNodes();
 
     let [has_metamask, set_has_metamask] = useState(false);
     let [waiting, set_waiting] = useState(false);
-    let [picking, set_picking] = useState(false);
-
-    // Testnet wallet card: the loaded account, and whether its key is revealed.
-    let [loaded, set_loaded] = useState<PlaygroundAccount | null>(null);
-    let [revealed, set_revealed] = useState(false);
+    let [faucet_op, set_faucet_op] = useState(u.OPERATION.INITIAL);
 
     async function detect_eth() {
         const {ethDetected} = await import("../../utils/metamask");
@@ -99,100 +90,68 @@ export function Landing() {
         );
     }
 
-    // Load a pre-funded testnet wallet, excluding whichever is already active so
-    // pressing the button again lands somewhere new.
-    function load_wallet() {
-        let account = pick_random_account(u.g.user?.revAddr);
-        if (!account) { return; }
-
-        set_loaded(account);
-        set_revealed(false);
+    // Create a fresh wallet and fund it from the node's faucet, so a visitor with no key can dive
+    // straight into the testnet. The keystore is saved (and downloaded) before funding, so the new
+    // key is never the only copy.
+    function login() {
+        layout.push_modal({
+            component: Components.PassConfirmModal,
+            props: {
+                title: "Keystore password",
+                text: "Set a password for your new wallet's keystore file",
+                button: "Create wallet",
+                onFinish: async (val) => {
+                    if (!val) { return; }
+                    set_faucet_op(u.OPERATION.PENDING);
+                    await u.faucet_login.login_with_faucet(node_context, val, layout, navigate);
+                    set_faucet_op(u.OPERATION.INITIAL);
+                }
+            }
+        });
     }
 
-    async function use_wallet() {
-        if (!loaded) { return; }
-
-        set_picking(true);
-        await u.playground.activate_account(loaded, layout, navigate);
-        set_picking(false);
-    }
-
-    function copy_key() {
-        if (loaded) {
-            navigator.clipboard.writeText(loaded.privKey);
-        }
-    }
-
-    let card_playground: JSX.Element|null = null;
-    if (PLAYGROUND_ACCOUNTS.length > 0) {
-        card_playground = (
+    let card_faucet: JSX.Element|null = null;
+    if (node_context.capabilities?.faucet) {
+        card_faucet = (
             <Components.Card
-                icon={icon("wallet-small")}
+                icon={icon("droplet")}
                 icon_color={"icon-primary-100"}
-                title="TESTNET WALLET"
+                title="LOGIN WITH FAUCET"
                 bg={"bg-primary-600"} fg={"text-base-50"}
                 shadow={"shadow-primary-600"}
             >
-                {
-                    loaded === null
-                    ? <>
-                        <p className="mb-auto">
-                            Load one of {PLAYGROUND_ACCOUNTS.length} pre-funded {PLAYGROUND_NETWORK} wallets.
-                        </p>
+                <p className="mb-auto">
+                    Create a fresh testnet wallet and fund it from the node's faucet. No key needed.
+                </p>
 
-                        <div className="flex justify-end">
+                <div className="flex justify-end">
+                    <Components.Spinner
+                        op={faucet_op}
+                        className="w-8 h-8"
+                        children_initial={
                             <Components.Button
                                 className="bg-base-50 text-base-950"
-                                onClick={load_wallet}
+                                onClick={login}
                             >
-                                LOAD WALLET
+                                LOGIN
                             </Components.Button>
-                        </div>
-                    </>
-                    : <>
-                        <div className="flex flex-col">
-                            <span className="text-xs font-bold">{loaded.name}</span>
-                            <span className="font-mono text-xs break-all opacity-90">{loaded.revAddr}</span>
-                        </div>
-
-                        <label title="PRIVATE KEY" className="items-center">
-                            <input
-                                className="font-mono text-xs"
-                                type={revealed ? "text" : "password"}
-                                value={loaded.privKey}
-                                readOnly
-                            />
-
-                            <Components.ToggleButton val={revealed} setval={set_revealed} />
-
-                            <Components.Button
-                                className="p-2 rounded-full"
-                                title="COPY PRIVATE KEY"
-                                onClick={copy_key}
-                            >
-                                <Icon name="copy" color={"icon-base-50"} className="w-4 h-4" />
-                            </Components.Button>
-                        </label>
-
-                        <div className="flex flex-wrap gap-2 justify-between">
-                            <Components.Button
-                                className="bg-base-50 text-base-950"
-                                disabled={picking}
-                                onClick={load_wallet}
-                            >
-                                LOAD ANOTHER
-                            </Components.Button>
-
-                            <Components.Button
-                                className="bg-base-50 text-base-950"
-                                disabled={picking}
-                                onClick={use_wallet}
-                            >
-                                { picking ? "CONNECTING…" : "USE WALLET" }
-                            </Components.Button>
-                        </div>
-                    </>
-                }
+                        }
+                    />
+                </div>
+            </Components.Card>
+        );
+    } else if (node_context.capabilities && !node_context.capabilities.faucet) {
+        // A node that serves no faucet is a misconfiguration on a testnet, not a dead end — say so
+        // rather than hiding the card with no explanation.
+        card_faucet = (
+            <Components.Card
+                icon={icon("droplet")}
+                icon_color={"icon-primary-100"}
+                title="LOGIN WITH FAUCET"
+                bg={"bg-primary-600"} fg={"text-base-50"}
+                shadow={"shadow-primary-600"}
+            >
+                <p className="mb-auto warning">No faucet on this node.</p>
             </Components.Card>
         );
     }
@@ -260,7 +219,7 @@ export function Landing() {
                     </div>
                 </Components.Card>
 
-                { card_playground }
+                { card_faucet }
 
             </div>
 
