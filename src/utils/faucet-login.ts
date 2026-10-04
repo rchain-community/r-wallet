@@ -3,7 +3,8 @@
 //
 // Unlike the old pre-funded card, no published key is involved: the wallet is fresh, and the node
 // funds it server-side from its devnet deployer (see `globals.faucet` / `api/faucet.ts`). The
-// wallet persists to the local user list, so a reload keeps it (unlike a session-only account).
+// wallet is session-only, like the other access flows: a reload drops it, and the downloaded
+// keystore file is the way back in.
 
 import type { NavigateFunction } from "react-router-dom";
 import type { LayoutContext, NodeContext } from "Context";
@@ -38,9 +39,7 @@ export async function login_with_faucet(
 	}
 	download_blob(keystore.blobUrl, keystore.name);
 
-	let user = g.create_user("My Wallet", password, wallet);
-	g.add_user(user);
-	g.set_active_user(user);
+	g.set_active_user(g.create_user("My Wallet", password, wallet));
 
 	// Fund it. A failure here leaves a valid (unfunded) wallet rather than nothing, so warn and
 	// continue instead of rolling back — the user still has a usable wallet and its keystore.

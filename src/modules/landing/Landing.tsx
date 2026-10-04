@@ -70,26 +70,6 @@ export function Landing() {
         </Components.Card>
     );
 
-    let card_local: JSX.Element|null = null;
-    if (u.g.user_list.length > 0) {
-        card_local = (
-            <Components.Card
-                icon={icon("wallet-small")}
-                title="LOCAL WALLET"
-                bg={"bg-primary-700"} fg={"text-base-50"}
-                shadow={"shadow-primary-700"}
-            >
-                <p className="mb-auto">Access your locally stored wallet</p>
-
-                <div className="flex gap-2 justify-end">
-                    <Components.Button className="bg-base-50 text-base-950" onClick={() => navigate("/access/local")}>
-                        ACCESS
-                    </Components.Button>
-                </div>
-            </Components.Card>
-        );
-    }
-
     // Create a fresh wallet and fund it from the node's faucet, so a visitor with no key can dive
     // straight into the testnet. The keystore is saved (and downloaded) before funding, so the new
     // key is never the only copy.
@@ -161,7 +141,6 @@ export function Landing() {
             <h2 className="text-center mb-8">Access or create your {BRAND.name}</h2>
 
             <div className="flex flex-row flex-wrap gap-8 justify-center items-center">
-                { card_local }
                 { card_metamask }
 
                 <Components.Card
