@@ -1,7 +1,8 @@
 // Live check of quantum key hygiene against a running node (`-- --node <url>`, default
 // http://localhost:40403): fund a fresh account, confirm its key is not seen, sweep it to another
-// fresh account, then confirm the chain scan finds the sweeper's key and the balance moved.
-// Needs a node whose genesis funds the devnet deployer key (as `tools/devnet.sh` does).
+// fresh account, then confirm the node's deployer index finds the sweeper's key and the balance moved.
+// Needs a node with the deployer index (rchain-rust `GET /api/v1/deployer`) whose genesis funds
+// the devnet deployer key (as `tools/devnet.sh` does).
 //
 //   npx tsx scripts/probe-sweep.mts -- --node http://localhost:40403
 
@@ -43,7 +44,7 @@ check(fund.error === null, `funded ${a.revAddr} (${fund.error})`);
 check(await bal(a.revAddr) === AMOUNT, `fresh account holds ${AMOUNT}`);
 
 const before = await exposure.check_exposure(NODE, a.pubKey);
-check(before.state === "not-seen" && before.complete, `fresh key not seen on chain (${exposure.describe_exposure(before)})`);
+check(before.state === "not-seen", `fresh key not seen on chain (${exposure.describe_exposure(before)})`);
 
 const swept = await sweep(NODE, { name: "a", ...a }, b.revAddr);
 console.log("  sweep result:", JSON.stringify(swept.expr), swept.error);

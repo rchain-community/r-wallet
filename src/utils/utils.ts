@@ -74,10 +74,9 @@ export type UserMetaMaskWallet = NamedWallet & MetaMaskWallet;
 interface LocallyStored {
 	"custom-nodes": nw.Named_Node[],
 	"tx-list": TransactionRecord[],
-	// Quantum key hygiene (src/utils/exposure.ts): keys known to be public, chain-scan progress per
-	// `node|key`, and the warning threshold in REV.
+	// Quantum key hygiene (src/utils/exposure.ts): keys known to be public, and the warning
+	// threshold in REV.
 	"revealed-keys": Record<string, RevealRecord>,
-	"exposure-scan": Record<string, number>,
 	"exposure-threshold": number
 };
 

@@ -116,8 +116,8 @@ export function KeyExposure(props: KeyExposureProps) {
             className="w-6 h-6"
             children_done={<p className="text-sm">{exposure ? u.exposure.describe_exposure(exposure) : ""}</p>}
         />
-        {exposure?.state === "not-seen" && !exposure.complete && (
-            <Button className="w-fit" onClick={check}>CONTINUE CHECK</Button>
+        {exposure?.state === "indexing" && (
+            <Button className="w-fit" onClick={check}>CHECK AGAIN</Button>
         )}
         {layout.help_mode && (
             <p className="text-sm opacity-70">

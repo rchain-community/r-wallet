@@ -11,8 +11,8 @@ import type {
     DelegatorPosition,
     DeployExecStatus,
     DeployRequest,
+    DeployerInfo,
     FaucetResponse,
-    LightBlockInfo,
     NodeCapabilities,
     PooledDeploys,
     PosStatus,
@@ -106,12 +106,15 @@ export async function getBlock(url: string, hash: string): Promise<BlockInfo> {
     return res.json as BlockInfo;
 }
 
-// `GET /api/blocks/{start}/{end}` — the blocks at heights `start..=end`, light form (no deploys).
-// The node refuses a range wider than its `max-blocks-limit` (50 by default), so callers page.
-export async function getBlocksByHeights(url: string, start: number, end: number): Promise<LightBlockInfo[]> {
-    const res = await httpFetch("GET", api(url, `blocks/${start}/${end}`));
+// `GET /api/v1/deployer/:pubkey` — the node's deployer index: a block containing a deploy the key
+// signed (so the key is public), or null, and the height the index reaches down to (0 = complete).
+// Returns null on 404, so a node without the index degrades instead of erroring; a malformed key is
+// a 400, surfaced by `ensureOk`.
+export async function getDeployer(url: string, pubKeyHex: string): Promise<DeployerInfo | null> {
+    const res = await httpFetch("GET", api(url, `v1/deployer/${pubKeyHex}`));
+    if (res.status === 404) return null;
     ensureOk(res);
-    return res.json as LightBlockInfo[];
+    return res.json as DeployerInfo;
 }
 
 export async function getCapabilities(url: string): Promise<NodeCapabilities> {

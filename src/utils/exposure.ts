@@ -8,20 +8,19 @@
 // vault. The defence that works today is to keep value behind an unrevealed key, and to leave a
 // revealed one by sweeping the whole balance to a fresh address in one deploy.
 //
-// This file answers the first half: "is this key revealed?". There are three sources of evidence,
-// and only a positive one is conclusive:
+// This file answers the first half: "is this key revealed?". There are three sources of evidence:
 //   1. this wallet signed a deploy with the key (recorded by `mark_revealed`, called from the signing
 //      path in rnode.ts before the deploy is sent);
 //   2. the node's deploy pool holds a deploy from the key (`GET /api/v1/deploys`);
-//   3. a block on the chain contains a deploy from the key (`GET /api/blocks/{start}/{end}`, then
-//      `GET /api/block/{hash}` for each block that has deploys).
-// The node keeps no index by deployer, so (3) is a scan. It is incremental: the highest height
-// already scanned is cached per node and key, and a revealed key is remembered for good, because a
-// key that has been published cannot be unpublished. "Not seen" is reported with the range scanned,
-// never as "safe".
+//   3. the node's deployer index (`GET /api/v1/deployer/{pubkey}`): a block containing a deploy the
+//      key signed, in one lookup. The index reaches down to `indexedFromHeight`; a node upgraded
+//      onto an existing chain backfills the blocks below that in the background, and until it has,
+//      "not seen" cannot be said — the answer is "still indexing", not a guess.
+// A revealed key is remembered for good, because a key that has been published cannot be
+// unpublished. A node without the index is "unknown": the wallet does not scan the chain instead.
 
 import * as u from './utils';
-import { getBlock, getBlocksByHeights, getPooledDeploys, getStatus } from '../api/client';
+import { getDeployer, getPooledDeploys } from '../api/client';
 
 export type RevealSource = "signed-here" | "pool" | "chain";
 
@@ -37,20 +36,12 @@ export interface RevealRecord {
 
 export type Exposure =
     | { state: "revealed"; record: RevealRecord }
-    /**
-     * No deploy from the key was found in heights `0..=scannedTo`, nor in the pool. `complete` is
-     * false when the per-check budget ran out before the head height (`latest`); checking again
-     * continues.
-     */
-    | { state: "not-seen"; scannedTo: number; latest: number; complete: boolean }
+    /** No block on the chain contains a deploy from the key, and the pool holds none. */
+    | { state: "not-seen" }
+    /** Not in any block from `indexedFrom` up; the node is still indexing the blocks below. */
+    | { state: "indexing"; indexedFrom: number }
     | { state: "unknown"; error: string };
 
-/** The node refuses a height range wider than its `max-blocks-limit` (50 by default). */
-export const HEIGHT_CHUNK = 50;
-/** Heights below the last scanned one that the next check reads again (late blocks at a height). */
-export const RESCAN_TAIL = 10;
-/** How many heights one check scans at most, so a long chain is not walked in one go. */
-export const DEFAULT_SCAN_BUDGET = 2000;
 /** The default warning threshold, in REV. Configurable on the Settings page. */
 export const DEFAULT_THRESHOLD_REV = 10;
 export const DROPS_PER_REV = 100_000_000;
@@ -66,11 +57,9 @@ export function normalize_key(pub_key: string): string {
 // not exist (the tsx unit tests) and survives a reload where it does.
 
 export const revealed_keys: Record<string, RevealRecord> = {};
-const scan_progress: Record<string, number> = {};
 
 export function restore_exposure_state() {
     Object.assign(revealed_keys, u.get_local("revealed-keys", {}));
-    Object.assign(scan_progress, u.get_local("exposure-scan", {}));
 }
 
 /** Record that `pub_key` is public. The earliest record wins: it is the most informative. */
@@ -83,16 +72,6 @@ export function mark_revealed(pub_key: string, record: Omit<RevealRecord, "recor
 
 export function known_reveal(pub_key: string): RevealRecord | null {
     return revealed_keys[normalize_key(pub_key)] ?? null;
-}
-
-function scan_key(node_url: string, pub_key: string) {
-    return `${node_url.replace(/\/$/, "")}|${normalize_key(pub_key)}`;
-}
-
-/** Forget scan progress (not reveals) — for tests, and for a node whose chain was reset. */
-export function reset_scan_progress() {
-    for (const k of Object.keys(scan_progress)) delete scan_progress[k];
-    u.set_local("exposure-scan", scan_progress);
 }
 
 // --- Threshold ----------------------------------------------------------------------------------
@@ -119,26 +98,17 @@ export function should_warn(exposure: Exposure, balance_drops: number | null, th
 
 // --- The check ----------------------------------------------------------------------------------
 
-export interface CheckOptions {
-    /** Most heights to scan in this call. */
-    budget?: number;
-}
-
 /**
- * Is `pub_key` revealed, as far as this wallet and `node_url` can tell?
- *
- * A remembered reveal answers at once. Otherwise the pool is checked, then the chain is scanned
- * upward from where the last check stopped. A positive finding is remembered.
+ * Is `pub_key` revealed, as far as this wallet and `node_url` can tell? A remembered reveal answers
+ * at once; otherwise the pool, then the node's deployer index. A positive finding is remembered.
  */
-export async function check_exposure(node_url: string, pub_key: string, opts: CheckOptions = {}): Promise<Exposure> {
+export async function check_exposure(node_url: string, pub_key: string): Promise<Exposure> {
     const key = normalize_key(pub_key);
     const known = revealed_keys[key];
     if (known) return { state: "revealed", record: known };
 
-    const budget = Math.max(1, opts.budget ?? DEFAULT_SCAN_BUDGET);
-
     try {
-        // The pool first: cheap, and it catches a deploy signed elsewhere that is not in a block yet.
+        // The pool first: it catches a deploy signed elsewhere that is not in a block yet.
         try {
             const pool = await getPooledDeploys(node_url);
             const hit = pool.deploys.find(d => normalize_key(d.deployer) === key);
@@ -147,45 +117,24 @@ export async function check_exposure(node_url: string, pub_key: string, opts: Ch
                 return { state: "revealed", record: revealed_keys[key] };
             }
         } catch {
-            // A node without `/api/v1/deploys` still answers the chain scan.
+            // A node without `/api/v1/deploys` still answers the index lookup.
         }
 
-        // `latestBlockNumber` is one past the highest height (`block-storage` `latest_block_number`
-        // is `max height + 1`, as in the Scala node), so the head is one below it.
-        const { latestBlockNumber } = await getStatus(node_url);
-        const head = latestBlockNumber - 1;
-        const sk = scan_key(node_url, key);
-        // A cached height above the head means the chain was reset under this URL (a devnet
-        // restart): start again from genesis rather than trust the old progress.
-        let done = scan_progress[sk] ?? -1;
-        if (done > head) done = -1;
-        // Re-read the last few heights already scanned: with several validators, a block can still
-        // arrive at a height after the wallet has read it.
-        const from = Math.max(0, done + 1 - RESCAN_TAIL);
-
-        const stop = Math.min(head, from + budget - 1);
-        for (let start = from; start <= stop; start += HEIGHT_CHUNK) {
-            const end = Math.min(stop, start + HEIGHT_CHUNK - 1);
-            const blocks = await getBlocksByHeights(node_url, start, end);
-            for (const b of blocks) {
-                if (!b.deployCount) continue;
-                const full = await getBlock(node_url, b.blockHash);
-                const d = full.deploys.find(d => normalize_key(d.deployer) === key);
-                if (d) {
-                    mark_revealed(key, {
-                        source: "chain",
-                        blockNumber: b.blockNumber,
-                        blockHash: b.blockHash,
-                    });
-                    return { state: "revealed", record: revealed_keys[key] };
-                }
-            }
-            scan_progress[sk] = Math.max(done, end);
-            u.set_local("exposure-scan", scan_progress);
+        const info = await getDeployer(node_url, key);
+        if (info === null) {
+            return { state: "unknown", error: "this node has no deployer index (GET /api/v1/deployer)" };
         }
-
-        const scannedTo = Math.max(done, stop);
-        return { state: "not-seen", scannedTo, latest: head, complete: scannedTo >= head };
+        if (info.block) {
+            mark_revealed(key, {
+                source: "chain",
+                blockNumber: info.block.blockNumber,
+                blockHash: info.block.blockHash,
+            });
+            return { state: "revealed", record: revealed_keys[key] };
+        }
+        return info.indexedFromHeight > 0
+            ? { state: "indexing", indexedFrom: info.indexedFromHeight }
+            : { state: "not-seen" };
     } catch (err) {
         return { state: "unknown", error: u.error_string(err) };
     }
@@ -201,9 +150,9 @@ export function describe_exposure(exposure: Exposure): string {
             return `Public key revealed: a deploy from this key is in block ${r.blockNumber}.`;
         }
         case "not-seen":
-            return exposure.complete
-                ? `Public key not seen on chain (blocks 0–${exposure.scannedTo} checked).`
-                : `Public key not seen in blocks 0–${exposure.scannedTo} of ${exposure.latest}; check again to continue.`;
+            return "Public key not seen on chain: this key has never signed a deploy in a block.";
+        case "indexing":
+            return `Public key not seen from block ${exposure.indexedFrom} up; the node is still indexing older blocks, so check again later.`;
         case "unknown":
             return `Could not check whether the public key is revealed: ${exposure.error}`;
     }

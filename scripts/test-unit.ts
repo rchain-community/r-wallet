@@ -384,7 +384,7 @@ async function main() {
 
         // Warn only on a revealed key above the threshold.
         const revealed: exposure.Exposure = { state: "revealed", record: { source: "chain", recordedAt: 0, blockNumber: 3 } };
-        const unseen: exposure.Exposure = { state: "not-seen", scannedTo: 9, latest: 9, complete: true };
+        const unseen: exposure.Exposure = { state: "not-seen" };
         const rev = exposure.DROPS_PER_REV;
         check(exposure.should_warn(revealed, 11 * rev, 10), "should_warn: revealed and above threshold");
         check(!exposure.should_warn(revealed, 10 * rev, 10), "should_warn: revealed at the threshold is not above it");
@@ -392,62 +392,46 @@ async function main() {
         check(!exposure.should_warn(revealed, null, 10), "should_warn: unknown balance does not warn");
         check(exposure.get_threshold_rev() === exposure.DEFAULT_THRESHOLD_REV, "threshold defaults without localStorage");
 
-        // The chain scan: heights paged in chunks the node accepts, a block fetched only when it has
-        // deploys, and the key compared case-insensitively.
+        // The deployer index: one lookup, read three ways.
         const target = await bc.create_account();
         const other = await bc.create_account();
         if (!target || !other) throw new Error("create_account failed");
-        const LATEST = 120;
-        const HIT = 75;
-        const ranges: [number, number][] = [];
-        const fetched: string[] = [];
-        const chain_fetch = (with_hit: boolean) => (async (url: RequestInfo | URL) => {
+        let asked = "";
+        const index_fetch = (reply: unknown, status = 200) => (async (url: RequestInfo | URL) => {
             const s = String(url);
             if (s.endsWith("/api/v1/deploys")) return new Response(JSON.stringify({ deploys: [] }), { status: 200 });
-            // The node reports one past the head height (`max height + 1`), measured on a live node.
-            if (s.endsWith("/api/status")) return new Response(JSON.stringify({ latestBlockNumber: LATEST + 1 }), { status: 200 });
-            const m = s.match(/\/api\/blocks\/(\d+)\/(\d+)$/);
+            const m = s.match(/\/api\/v1\/deployer\/([0-9a-f]+)$/);
             if (m) {
-                const [a, b] = [Number(m[1]), Number(m[2])];
-                ranges.push([a, b]);
-                const out = [];
-                for (let h = a; h <= b; h++) out.push({ blockHash: `h${h}`, blockNumber: h, deployCount: h % 5 === 0 ? 1 : 0 });
-                return new Response(JSON.stringify(out), { status: 200 });
-            }
-            const bm = s.match(/\/api\/block\/h(\d+)$/);
-            if (bm) {
-                const h = Number(bm[1]);
-                fetched.push(`h${h}`);
-                const deployer = with_hit && h === HIT ? "0x" + target.pubKey.toUpperCase() : other.pubKey;
-                return new Response(JSON.stringify({ blockInfo: {}, deploys: [{ deployer }] }), { status: 200 });
+                asked = m[1];
+                return new Response(JSON.stringify(reply), { status });
             }
             return new Response("not found", { status: 404 });
         }) as typeof fetch;
 
         try {
-            exposure.reset_scan_progress();
-            globalThis.fetch = chain_fetch(true);
-            const found = await exposure.check_exposure("http://x", target.pubKey);
-            check(found.state === "revealed" && found.record.source === "chain" && found.record.blockNumber === HIT,
-                `check_exposure finds the deploy in block ${HIT} (${JSON.stringify(found)})`);
-            check(ranges.every(([a, b]) => b - a < exposure.HEIGHT_CHUNK), "check_exposure pages heights within the node's limit");
-            check(fetched.every(h => Number(h.slice(1)) % 5 === 0), "check_exposure fetches only blocks that have deploys");
+            globalThis.fetch = index_fetch({ block: { blockNumber: 75, blockHash: "h75" }, indexedFromHeight: 0 });
+            const found = await exposure.check_exposure("http://x", "0x" + target.pubKey.toUpperCase());
+            check(found.state === "revealed" && found.record.source === "chain" && found.record.blockNumber === 75,
+                `a block from the index reveals the key (${JSON.stringify(found)})`);
+            check(asked === target.pubKey, "the index is asked with the bare lowercase key");
 
-            // Remembered: no further requests.
-            ranges.length = 0;
+            // Remembered: the node is not asked again.
+            asked = "";
             const again = await exposure.check_exposure("http://x", target.pubKey);
-            check(again.state === "revealed" && ranges.length === 0, "a revealed key is remembered without rescanning");
+            check(again.state === "revealed" && asked === "", "a revealed key is remembered without asking again");
 
-            // A key never seen: a partial scan under budget, then the rest on the next check.
-            globalThis.fetch = chain_fetch(false);
-            const partial = await exposure.check_exposure("http://x", other.pubKey.slice(0, 4) + "00".repeat(63), { budget: 60 });
-            check(partial.state === "not-seen" && !partial.complete && partial.scannedTo === 59,
-                `check_exposure stops at its budget (${JSON.stringify(partial)})`);
-            ranges.length = 0;
-            const rest = await exposure.check_exposure("http://x", other.pubKey.slice(0, 4) + "00".repeat(63), { budget: 1000 });
-            check(rest.state === "not-seen" && rest.complete && rest.scannedTo === LATEST && ranges[0][0] === 60 - exposure.RESCAN_TAIL,
-                `the next check resumes where the last stopped, re-reading a short tail (${JSON.stringify(rest)})`);
-            check(ranges.every(([, b]) => b <= LATEST), "the scan stops at the head height, one below latestBlockNumber");
+            globalThis.fetch = index_fetch({ block: null, indexedFromHeight: 0 });
+            const unseen = await exposure.check_exposure("http://x", other.pubKey);
+            check(unseen.state === "not-seen", "a complete index without the key is not-seen");
+
+            globalThis.fetch = index_fetch({ block: null, indexedFromHeight: 4000 });
+            const partial = await exposure.check_exposure("http://x", other.pubKey);
+            check(partial.state === "indexing" && partial.indexedFrom === 4000,
+                `a backfilling index is "indexing", never not-seen (${JSON.stringify(partial)})`);
+
+            globalThis.fetch = index_fetch("not found", 404);
+            const no_index = await exposure.check_exposure("http://x", other.pubKey);
+            check(no_index.state === "unknown", "a node without the index is unknown, not not-seen");
 
             // A pooled deploy counts as revealed.
             globalThis.fetch = (async (url: RequestInfo | URL) => String(url).endsWith("/api/v1/deploys")

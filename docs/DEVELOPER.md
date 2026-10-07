@@ -84,7 +84,7 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 | `propose(adminBase)` | `POST /api/propose` | none | JSON string `"Success! Block <hash> …"` |
 | `dataAtName(base, name, depth)` | `POST /api/data-at-name` | `{ name: <RhoUnforg, enveloped>, depth }` | `DataAtNameResponse { exprs, length }` |
 | `getBlock(base, hash)` | `GET /api/block/:hash` | — | `BlockInfo { blockInfo, deploys }` |
-| `getBlocksByHeights(base, start, end)` | `GET /api/blocks/:start/:end` | — | `LightBlockInfo[]` for heights `start..=end`; the node refuses a range wider than `max-blocks-limit` (50 by default) |
+| `getDeployer(base, pubKeyHex)` | `GET /api/v1/deployer/:pubkey` | — | `DeployerInfo { block, indexedFromHeight }`, or `null` on 404 (no index); 400 for a malformed key |
 | `faucetRequest(base, address)` | `POST /api/faucet` | `{ address }` | `FaucetResponse { deployId, amount, to }` |
 | `getCapabilities(base)` | `GET /api/v1/capabilities` | — | `NodeCapabilities { autopropose, proposeOnDeploy, manualPropose, adminHttp, devMode, faucet }` |
 | `getPooledDeploys(base)` | `GET /api/v1/deploys` | — | `PooledDeploys { deploys: [PooledDeploy] }` |
@@ -174,12 +174,11 @@ public the first time it signs a deploy. Value is safest behind a key that has n
 
 - **Is the key revealed?** `src/utils/exposure.ts` `check_exposure(node, pubKey)`. Evidence, in order:
   the wallet's own record (`mark_revealed`, called in `rnode.ts`'s signing path before every deploy is
-  sent), the node's pool (`GET /api/v1/deploys`), then a scan of the chain for a deploy whose
-  `deployer` is the key. The node has no index by deployer, so the scan pages
-  `GET /api/blocks/:start/:end` in chunks of 50 and fetches `GET /api/block/:hash` only for blocks
-  with `deployCount > 0`. It is incremental (progress cached per `node|key`, at most 2000 heights per
-  check) and a reveal is remembered for good. "Not seen" always carries the range scanned; an
-  unreachable node is `unknown`, never "not seen".
+  sent), the node's pool (`GET /api/v1/deploys`), then the node's deployer index
+  (`GET /api/v1/deployer/:pubkey`), which answers in one lookup. A reveal is remembered for good.
+  `indexedFromHeight > 0` means the node is still backfilling older blocks after an upgrade, and is
+  shown as "still indexing", never as "not seen". A node without the index is `unknown`: the wallet
+  does not scan the chain instead.
 - **Warning.** `should_warn` is true only for a revealed key holding more than the threshold
   (default 10 REV, set on the Settings page, stored as `exposure-threshold`).
 - **Sweep.** The Dashboard's `KeyExposure` panel generates a fresh account, downloads its keystore
