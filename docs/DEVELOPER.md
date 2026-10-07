@@ -186,7 +186,9 @@ public the first time it signs a deploy. Value is safest behind a key that has n
   *first*, then signs `rho.fn_sweep` with the old key (`rnode.sweep`), and on success makes the fresh
   account active. The balance is read inside the deploy, after phlo is pre-charged, so the amount is
   exact. The unused phlo is refunded to the *old* address afterwards: dust of at most
-  `SWEEP_PHLO_LIMIT × phloPrice` stays behind, which a single deploy cannot avoid.
+  `SWEEP_PHLO_LIMIT × phloPrice` (20,000 drops at price 1; a sweep measured about 3,000 phlo) stays
+  behind, which a single deploy cannot avoid. `scripts/probe-sweep.mts` runs the whole flow against
+  a node.
 - **Not here yet:** one-time-key management for `PQVault` (§15) — the contract does not exist.
 
 ## Rholang: the native Proof-of-Stake API

@@ -404,7 +404,8 @@ async function main() {
         const chain_fetch = (with_hit: boolean) => (async (url: RequestInfo | URL) => {
             const s = String(url);
             if (s.endsWith("/api/v1/deploys")) return new Response(JSON.stringify({ deploys: [] }), { status: 200 });
-            if (s.endsWith("/api/status")) return new Response(JSON.stringify({ latestBlockNumber: LATEST }), { status: 200 });
+            // The node reports one past the head height (`max height + 1`), measured on a live node.
+            if (s.endsWith("/api/status")) return new Response(JSON.stringify({ latestBlockNumber: LATEST + 1 }), { status: 200 });
             const m = s.match(/\/api\/blocks\/(\d+)\/(\d+)$/);
             if (m) {
                 const [a, b] = [Number(m[1]), Number(m[2])];
@@ -444,8 +445,9 @@ async function main() {
                 `check_exposure stops at its budget (${JSON.stringify(partial)})`);
             ranges.length = 0;
             const rest = await exposure.check_exposure("http://x", other.pubKey.slice(0, 4) + "00".repeat(63), { budget: 1000 });
-            check(rest.state === "not-seen" && rest.complete && rest.scannedTo === LATEST && ranges[0][0] === 60,
-                `the next check resumes where the last stopped (${JSON.stringify(rest)})`);
+            check(rest.state === "not-seen" && rest.complete && rest.scannedTo === LATEST && ranges[0][0] === 60 - exposure.RESCAN_TAIL,
+                `the next check resumes where the last stopped, re-reading a short tail (${JSON.stringify(rest)})`);
+            check(ranges.every(([, b]) => b <= LATEST), "the scan stops at the head height, one below latestBlockNumber");
 
             // A pooled deploy counts as revealed.
             globalThis.fetch = (async (url: RequestInfo | URL) => String(url).endsWith("/api/v1/deploys")

@@ -39,13 +39,16 @@ export type Exposure =
     | { state: "revealed"; record: RevealRecord }
     /**
      * No deploy from the key was found in heights `0..=scannedTo`, nor in the pool. `complete` is
-     * false when the per-check budget ran out before the head (`latest`); checking again continues.
+     * false when the per-check budget ran out before the head height (`latest`); checking again
+     * continues.
      */
     | { state: "not-seen"; scannedTo: number; latest: number; complete: boolean }
     | { state: "unknown"; error: string };
 
 /** The node refuses a height range wider than its `max-blocks-limit` (50 by default). */
 export const HEIGHT_CHUNK = 50;
+/** Heights below the last scanned one that the next check reads again (late blocks at a height). */
+export const RESCAN_TAIL = 10;
 /** How many heights one check scans at most, so a long chain is not walked in one go. */
 export const DEFAULT_SCAN_BUDGET = 2000;
 /** The default warning threshold, in REV. Configurable on the Settings page. */
@@ -147,15 +150,21 @@ export async function check_exposure(node_url: string, pub_key: string, opts: Ch
             // A node without `/api/v1/deploys` still answers the chain scan.
         }
 
-        const { latestBlockNumber: latest } = await getStatus(node_url);
+        // `latestBlockNumber` is one past the highest height (`block-storage` `latest_block_number`
+        // is `max height + 1`, as in the Scala node), so the head is one below it.
+        const { latestBlockNumber } = await getStatus(node_url);
+        const head = latestBlockNumber - 1;
         const sk = scan_key(node_url, key);
         // A cached height above the head means the chain was reset under this URL (a devnet
         // restart): start again from genesis rather than trust the old progress.
         let done = scan_progress[sk] ?? -1;
-        if (done > latest) done = -1;
+        if (done > head) done = -1;
+        // Re-read the last few heights already scanned: with several validators, a block can still
+        // arrive at a height after the wallet has read it.
+        const from = Math.max(0, done + 1 - RESCAN_TAIL);
 
-        const stop = Math.min(latest, done + budget);
-        for (let start = done + 1; start <= stop; start += HEIGHT_CHUNK) {
+        const stop = Math.min(head, from + budget - 1);
+        for (let start = from; start <= stop; start += HEIGHT_CHUNK) {
             const end = Math.min(stop, start + HEIGHT_CHUNK - 1);
             const blocks = await getBlocksByHeights(node_url, start, end);
             for (const b of blocks) {
@@ -171,12 +180,12 @@ export async function check_exposure(node_url: string, pub_key: string, opts: Ch
                     return { state: "revealed", record: revealed_keys[key] };
                 }
             }
-            scan_progress[sk] = end;
+            scan_progress[sk] = Math.max(done, end);
             u.set_local("exposure-scan", scan_progress);
         }
 
         const scannedTo = Math.max(done, stop);
-        return { state: "not-seen", scannedTo, latest, complete: scannedTo >= latest };
+        return { state: "not-seen", scannedTo, latest: head, complete: scannedTo >= head };
     } catch (err) {
         return { state: "unknown", error: u.error_string(err) };
     }

@@ -250,9 +250,11 @@ export async function sweep(
 
 /**
  * Phlo limit for a sweep. The unused part is refunded to the *old* address after the deploy, so this
- * bounds the dust left behind: at a phlo price of 1 it is at most 0.005 REV.
+ * bounds the dust left behind (at most 0.0002 REV at a phlo price of 1). Measured on a local node
+ * (`scripts/probe-sweep.mts`): a sweep costs about 3,000 phlo, so this leaves a wide margin; a sweep
+ * that ran out would fail whole, moving nothing.
  */
-export const SWEEP_PHLO_LIMIT = 500000;
+export const SWEEP_PHLO_LIMIT = 20000;
 
 // --- Proof of Stake -----------------------------------------------------------
 // Self-bond/unbond via the native `rho:rchain:pos`. Both take the caller's own `deployerId`, so
