@@ -84,6 +84,7 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 | `propose(adminBase)` | `POST /api/propose` | none | JSON string `"Success! Block <hash> …"` |
 | `dataAtName(base, name, depth)` | `POST /api/data-at-name` | `{ name: <RhoUnforg, enveloped>, depth }` | `DataAtNameResponse { exprs, length }` |
 | `getBlock(base, hash)` | `GET /api/block/:hash` | — | `BlockInfo { blockInfo, deploys }` |
+| `getBlocksByHeights(base, start, end)` | `GET /api/blocks/:start/:end` | — | `LightBlockInfo[]` for heights `start..=end`; the node refuses a range wider than `max-blocks-limit` (50 by default) |
 | `faucetRequest(base, address)` | `POST /api/faucet` | `{ address }` | `FaucetResponse { deployId, amount, to }` |
 | `getCapabilities(base)` | `GET /api/v1/capabilities` | — | `NodeCapabilities { autopropose, proposeOnDeploy, manualPropose, adminHttp, devMode, faucet }` |
 | `getPooledDeploys(base)` | `GET /api/v1/deploys` | — | `PooledDeploys { deploys: [PooledDeploy] }` |
@@ -161,6 +162,32 @@ The wallet's templates in `src/utils/rho.ts` use these:
 - `fn_check_balance(addr)` → `revVault!("getBalance", addr, *balanceCh)`.
 - `fn_transfer_funds(to, amount)` → `revVault!("transfer", *deployerId, to, amount, *resultCh)`
   (no `from` — the signer's `deployerId` is the source).
+- `fn_sweep(from, to)` → `getBalance(from)` then `transfer` of exactly that balance, in one deploy
+  (see *Quantum key hygiene* below).
+
+## Quantum key hygiene
+
+The wallet side of `rchain-rust`'s post-quantum plan
+([`docs/src/contributor/post-quantum-plan.md`](https://github.com/rchain-community/rchain-rust/blob/dev/docs/src/contributor/post-quantum-plan.md)
+§16.1). A REV address is a hash of the public key, so receiving REV reveals nothing; the key becomes
+public the first time it signs a deploy. Value is safest behind a key that has never signed.
+
+- **Is the key revealed?** `src/utils/exposure.ts` `check_exposure(node, pubKey)`. Evidence, in order:
+  the wallet's own record (`mark_revealed`, called in `rnode.ts`'s signing path before every deploy is
+  sent), the node's pool (`GET /api/v1/deploys`), then a scan of the chain for a deploy whose
+  `deployer` is the key. The node has no index by deployer, so the scan pages
+  `GET /api/blocks/:start/:end` in chunks of 50 and fetches `GET /api/block/:hash` only for blocks
+  with `deployCount > 0`. It is incremental (progress cached per `node|key`, at most 2000 heights per
+  check) and a reveal is remembered for good. "Not seen" always carries the range scanned; an
+  unreachable node is `unknown`, never "not seen".
+- **Warning.** `should_warn` is true only for a revealed key holding more than the threshold
+  (default 10 REV, set on the Settings page, stored as `exposure-threshold`).
+- **Sweep.** The Dashboard's `KeyExposure` panel generates a fresh account, downloads its keystore
+  *first*, then signs `rho.fn_sweep` with the old key (`rnode.sweep`), and on success makes the fresh
+  account active. The balance is read inside the deploy, after phlo is pre-charged, so the amount is
+  exact. The unused phlo is refunded to the *old* address afterwards: dust of at most
+  `SWEEP_PHLO_LIMIT × phloPrice` stays behind, which a single deploy cannot avoid.
+- **Not here yet:** one-time-key management for `PQVault` (§15) — the contract does not exist.
 
 ## Rholang: the native Proof-of-Stake API
 

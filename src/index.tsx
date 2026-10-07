@@ -2,7 +2,7 @@ import './styles/index.scss';
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
-import { g, nw, tx, useLocalStorage } from 'utils';
+import { exposure, g, nw, tx, useLocalStorage } from 'utils';
 import { getCapabilities, type NodeCapabilities } from 'api';
 import * as Components from 'components';
 import { LayoutContext, NodeContext, Notif } from "./Context";
@@ -19,6 +19,7 @@ declare global {
 };
 
 tx.restore_tx_list();
+exposure.restore_exposure_state();
 
 let notif_id = 0;
 

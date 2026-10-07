@@ -11,7 +11,9 @@ type Balance = Unbox<ReturnType<typeof g.check_balance>>;
 export function Dashboard() {
     const node_context = useNodes();
     const layout = useLayout();
-    let [name] = useState(g?.user?.name || "My Wallet");
+    let [name, set_name] = useState(g?.user?.name || "My Wallet");
+    // Bumped after a sweep switches the active account, so the card re-reads `g.user`.
+    let [, set_account_gen] = useState(0);
     let balance = useAsync<Balance>({ balance: 0, error: null });
     let value = useAsync<number>(null);
     let [faucet_op, set_faucet_op] = useState(OPERATION.INITIAL);
@@ -178,6 +180,15 @@ export function Dashboard() {
                 />
             </div>
         )}
+
+        <Components.KeyExposure
+            balance={balance.op === OPERATION.DONE ? (balance.value?.balance ?? null) : null}
+            on_swept={() => {
+                set_name(g.user?.name || "My Wallet");
+                set_account_gen(n => n + 1);
+                get_balance();
+            }}
+        />
 
         <h3 className="mt-4">Network</h3>
         <Components.NodePicker />

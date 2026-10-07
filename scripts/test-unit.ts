@@ -9,6 +9,8 @@ import * as bc from "../src/utils/blockchain";
 import * as rho from "../src/utils/rho";
 import { snippets, snippet_apply, snippet_meta } from "../src/modules/wallet/deploy/snippets";
 import { tx_list, add_tx, refresh_tx_states } from "../src/utils/transactions";
+import * as exposure from "../src/utils/exposure";
+import { sweep } from "../src/utils/rnode";
 import { PLAYGROUND_ACCOUNTS } from "../src/config/playground";
 import { GENESIS_ADDRESSES } from "../src/config/genesis-addresses";
 import type { DeployData, DeployRequest } from "../src/api/types";
@@ -371,6 +373,126 @@ async function main() {
     await refresh_tx_states("http://x");
     check(tx_list.some(t => t.deployId === "deadbeef" && t.status === "pending"), "refresh_tx_states reconciles a pooled deploy as pending");
     globalThis.fetch = originalFetch;
+
+    // 12. quantum key hygiene (src/utils/exposure.ts, `rnode.sweep`)
+    {
+        // The sweep term reads the balance inside the deploy and sends all of it, replying on deployId.
+        const term = rho.fn_sweep("1111from", "1111to");
+        check(term.includes('revVault!("getBalance", "1111from", *balanceCh)'), "fn_sweep reads the from-vault balance in the deploy");
+        check(term.includes('revVault!("transfer", *deployerId, "1111to", balance, *resultCh)'), "fn_sweep transfers exactly that balance to the target");
+        check(term.includes("deployId!((true, balance))") && term.includes("rho:rchain:deployId"), "fn_sweep replies on the deployId channel");
+
+        // Warn only on a revealed key above the threshold.
+        const revealed: exposure.Exposure = { state: "revealed", record: { source: "chain", recordedAt: 0, blockNumber: 3 } };
+        const unseen: exposure.Exposure = { state: "not-seen", scannedTo: 9, latest: 9, complete: true };
+        const rev = exposure.DROPS_PER_REV;
+        check(exposure.should_warn(revealed, 11 * rev, 10), "should_warn: revealed and above threshold");
+        check(!exposure.should_warn(revealed, 10 * rev, 10), "should_warn: revealed at the threshold is not above it");
+        check(!exposure.should_warn(unseen, 1000 * rev, 10), "should_warn: an unrevealed key never warns");
+        check(!exposure.should_warn(revealed, null, 10), "should_warn: unknown balance does not warn");
+        check(exposure.get_threshold_rev() === exposure.DEFAULT_THRESHOLD_REV, "threshold defaults without localStorage");
+
+        // The chain scan: heights paged in chunks the node accepts, a block fetched only when it has
+        // deploys, and the key compared case-insensitively.
+        const target = await bc.create_account();
+        const other = await bc.create_account();
+        if (!target || !other) throw new Error("create_account failed");
+        const LATEST = 120;
+        const HIT = 75;
+        const ranges: [number, number][] = [];
+        const fetched: string[] = [];
+        const chain_fetch = (with_hit: boolean) => (async (url: RequestInfo | URL) => {
+            const s = String(url);
+            if (s.endsWith("/api/v1/deploys")) return new Response(JSON.stringify({ deploys: [] }), { status: 200 });
+            if (s.endsWith("/api/status")) return new Response(JSON.stringify({ latestBlockNumber: LATEST }), { status: 200 });
+            const m = s.match(/\/api\/blocks\/(\d+)\/(\d+)$/);
+            if (m) {
+                const [a, b] = [Number(m[1]), Number(m[2])];
+                ranges.push([a, b]);
+                const out = [];
+                for (let h = a; h <= b; h++) out.push({ blockHash: `h${h}`, blockNumber: h, deployCount: h % 5 === 0 ? 1 : 0 });
+                return new Response(JSON.stringify(out), { status: 200 });
+            }
+            const bm = s.match(/\/api\/block\/h(\d+)$/);
+            if (bm) {
+                const h = Number(bm[1]);
+                fetched.push(`h${h}`);
+                const deployer = with_hit && h === HIT ? "0x" + target.pubKey.toUpperCase() : other.pubKey;
+                return new Response(JSON.stringify({ blockInfo: {}, deploys: [{ deployer }] }), { status: 200 });
+            }
+            return new Response("not found", { status: 404 });
+        }) as typeof fetch;
+
+        try {
+            exposure.reset_scan_progress();
+            globalThis.fetch = chain_fetch(true);
+            const found = await exposure.check_exposure("http://x", target.pubKey);
+            check(found.state === "revealed" && found.record.source === "chain" && found.record.blockNumber === HIT,
+                `check_exposure finds the deploy in block ${HIT} (${JSON.stringify(found)})`);
+            check(ranges.every(([a, b]) => b - a < exposure.HEIGHT_CHUNK), "check_exposure pages heights within the node's limit");
+            check(fetched.every(h => Number(h.slice(1)) % 5 === 0), "check_exposure fetches only blocks that have deploys");
+
+            // Remembered: no further requests.
+            ranges.length = 0;
+            const again = await exposure.check_exposure("http://x", target.pubKey);
+            check(again.state === "revealed" && ranges.length === 0, "a revealed key is remembered without rescanning");
+
+            // A key never seen: a partial scan under budget, then the rest on the next check.
+            globalThis.fetch = chain_fetch(false);
+            const partial = await exposure.check_exposure("http://x", other.pubKey.slice(0, 4) + "00".repeat(63), { budget: 60 });
+            check(partial.state === "not-seen" && !partial.complete && partial.scannedTo === 59,
+                `check_exposure stops at its budget (${JSON.stringify(partial)})`);
+            ranges.length = 0;
+            const rest = await exposure.check_exposure("http://x", other.pubKey.slice(0, 4) + "00".repeat(63), { budget: 1000 });
+            check(rest.state === "not-seen" && rest.complete && rest.scannedTo === LATEST && ranges[0][0] === 60,
+                `the next check resumes where the last stopped (${JSON.stringify(rest)})`);
+
+            // A pooled deploy counts as revealed.
+            globalThis.fetch = (async (url: RequestInfo | URL) => String(url).endsWith("/api/v1/deploys")
+                ? new Response(JSON.stringify({ deploys: [{ deployId: "p1", deployer: other.pubKey }] }), { status: 200 })
+                : new Response("not found", { status: 404 })) as typeof fetch;
+            const pooled = await exposure.check_exposure("http://x", other.pubKey);
+            check(pooled.state === "revealed" && pooled.record.source === "pool", "a pooled deploy reveals the key");
+
+            // The node being unreachable is "unknown", never "not seen".
+            globalThis.fetch = (async () => new Response("boom", { status: 500 })) as typeof fetch;
+            const fresh_key = await bc.create_account();
+            const unknown = await exposure.check_exposure("http://x", fresh_key!.pubKey);
+            check(unknown.state === "unknown", "an unreachable node reports unknown, not not-seen");
+
+            // The sweep: signing marks the key revealed, and the term moves everything to the target
+            // from the address derived from the signing key.
+            const signer = await bc.get_account_from_private_key(DEPLOYER_PRIV);
+            const dest = await bc.create_account();
+            let sent_term = "";
+            globalThis.fetch = (async (url: RequestInfo | URL, opt?: RequestInit) => {
+                const s = String(url);
+                if (s.endsWith("/api/status")) return new Response(JSON.stringify({ latestBlockNumber: 1, minPhloPrice: 1, shardId: "/root" }), { status: 200 });
+                if (s.endsWith("/api/deploy")) {
+                    sent_term = (JSON.parse(String(opt?.body)) as DeployRequest).data.term;
+                    return new Response(JSON.stringify("Success!\nDeployId is: abcd"), { status: 200 });
+                }
+                if (s.includes("/api/v1/deploy-status/")) {
+                    return new Response(JSON.stringify({ ProcessedWithSuccess: { deployResult: [], block: {} } }), { status: 200 });
+                }
+                return new Response("not found", { status: 404 });
+            }) as typeof fetch;
+            check(exposure.known_reveal(signer!.pubKey) === null, "the deployer key is not yet recorded as revealed");
+            const swept = await sweep("http://x", { name: "t", ...signer!, revAddr: "stale" }, dest!.revAddr);
+            check(swept.error === null && swept.deployId === "abcd", `sweep submits and tracks the deploy (${swept.error})`);
+            check(sent_term.includes(`"getBalance", "${DEPLOYER_ADDR}"`) && sent_term.includes(`"${dest!.revAddr}", balance`),
+                "sweep reads the key-derived address (not the stored one) and targets the fresh address");
+            check(exposure.known_reveal(signer!.pubKey)?.source === "signed-here", "signing a deploy records the key as revealed");
+            check(tx_list[0]?.kind === "sweep", "sweep is tracked as a sweep transaction");
+
+            const bad = await sweep("http://x", { name: "t", ...signer! }, "not-an-address");
+            check(bad.deployId === null && /valid address/.test(bad.error ?? ""), "sweep refuses an invalid target before signing");
+            const self = await sweep("http://x", { name: "t", ...signer! }, DEPLOYER_ADDR);
+            check(self.deployId === null && /own address/.test(self.error ?? ""), "sweep refuses to sweep to its own address");
+        } finally {
+            globalThis.fetch = originalFetch;
+        }
+    }
 
     // 11. playground accounts: every published key derives its published address
     // (the keys are public by design — this only guards the table against drifting)

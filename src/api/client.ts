@@ -12,6 +12,7 @@ import type {
     DeployExecStatus,
     DeployRequest,
     FaucetResponse,
+    LightBlockInfo,
     NodeCapabilities,
     PooledDeploys,
     PosStatus,
@@ -103,6 +104,14 @@ export async function getBlock(url: string, hash: string): Promise<BlockInfo> {
     const res = await httpFetch("GET", api(url, `block/${hash}`));
     ensureOk(res);
     return res.json as BlockInfo;
+}
+
+// `GET /api/blocks/{start}/{end}` — the blocks at heights `start..=end`, light form (no deploys).
+// The node refuses a range wider than its `max-blocks-limit` (50 by default), so callers page.
+export async function getBlocksByHeights(url: string, start: number, end: number): Promise<LightBlockInfo[]> {
+    const res = await httpFetch("GET", api(url, `blocks/${start}/${end}`));
+    ensureOk(res);
+    return res.json as LightBlockInfo[];
 }
 
 export async function getCapabilities(url: string): Promise<NodeCapabilities> {

@@ -47,6 +47,18 @@ export async function propose(
 	return await (await rnode).propose(url);
 }
 
+// --- Quantum key hygiene (src/utils/exposure.ts) -------------------------------
+
+export async function check_exposure(ctx: NodeContext, pub_key: string) {
+	const { check_exposure } = await import("./exposure");
+	return await check_exposure(ctx.get_readonly_url(), pub_key);
+}
+
+export async function sweep(ctx: NodeContext, from_account: u.UserWallet, to_rev_addr: string) {
+	let url = ctx.get_validator_url();
+	return await (await rnode).sweep(url, from_account, to_rev_addr);
+}
+
 // --- Proof of Stake -----------------------------------------------------------
 
 export async function pos_status(ctx: NodeContext) {

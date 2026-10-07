@@ -12,6 +12,30 @@ export const fn_transfer_funds = (rev_addr_to: string, amount: number|string) =>
   }
 `;
 
+// Rholang to move the *whole* balance of the signing vault to `rev_addr_to`, in one deploy
+// (quantum key hygiene, rchain-rust post-quantum plan §16.1). The balance is read inside the deploy,
+// after the node has pre-charged phlo, so the amount is exactly what the vault holds at that moment
+// and the transfer cannot fail for want of funds. `rev_addr_from` must be the signer's own address:
+// `transfer` spends the vault derived from `deployerId`, and `getBalance` reads the one named here.
+//
+// The unused phlo is refunded after the deploy, to the signer's vault, so the old address keeps that
+// refund (at most `phloLimit × phloPrice` drops) — dust the sweep cannot avoid in a single deploy.
+export const fn_sweep = (rev_addr_from: string, rev_addr_to: string) => `
+  new revVault(\`rho:rchain:revVault\`), deployerId(\`rho:rchain:deployerId\`), deployId(\`rho:rchain:deployId\`), balanceCh, resultCh in {
+    revVault!("getBalance", "${rev_addr_from}", *balanceCh) |
+    for (@balance <- balanceCh) {
+      if (balance > 0) {
+        revVault!("transfer", *deployerId, "${rev_addr_to}", balance, *resultCh) |
+        for (_ <- resultCh) {
+          deployId!((true, balance))
+        }
+      } else {
+        deployId!((false, "Nothing to sweep: the balance is 0."))
+      }
+    }
+  }
+`;
+
 // Rholang to check a REV balance via the native `getBalance` method
 // (rholang/src/system_processes.rs:1362-1374).
 export const fn_check_balance = (rev_addr: string) => `
