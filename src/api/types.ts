@@ -132,7 +132,7 @@ export interface DeployRequest {
     sigAlgorithm: string;
 }
 
-/** `GET /api/v1/deployer/:pubkey` (the node's deployer index). */
+/** `GET /api/v1/deployer/:hash` (the node's deployer index, asked by the key's blake2b256 hash). */
 export interface DeployerInfo {
     /** A block containing a deploy this key signed, or null when no indexed block has one. */
     block: LightBlockInfo | null;

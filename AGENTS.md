@@ -70,7 +70,7 @@ One convention in `client.ts`: `httpFetch(METHOD, path, body?) → ensureOk → 
 | `propose` | `POST /api/propose` (admin, no body) |
 | `dataAtName` | `POST /api/data-at-name` |
 | `getBlock` | `GET /api/block/:hash` |
-| `getDeployer` | `GET /api/v1/deployer/:pubkey` (deployer index; `null` on 404) |
+| `getDeployer` | `GET /api/v1/deployer/:hash` (deployer index, asked by `blake2b256(pubkey)`, never the key; `null` on 404) |
 | `faucetRequest` | `POST /api/faucet` |
 | `getCapabilities` | `GET /api/v1/capabilities` |
 | `getPooledDeploys` | `GET /api/v1/deploys` |

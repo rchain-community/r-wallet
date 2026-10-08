@@ -84,7 +84,7 @@ httpFetch(METHOD, path, body?)  ->  ensureOk(res)  ->  return typed DTO
 | `propose(adminBase)` | `POST /api/propose` | none | JSON string `"Success! Block <hash> …"` |
 | `dataAtName(base, name, depth)` | `POST /api/data-at-name` | `{ name: <RhoUnforg, enveloped>, depth }` | `DataAtNameResponse { exprs, length }` |
 | `getBlock(base, hash)` | `GET /api/block/:hash` | — | `BlockInfo { blockInfo, deploys }` |
-| `getDeployer(base, pubKeyHex)` | `GET /api/v1/deployer/:pubkey` | — | `DeployerInfo { block, indexedFromHeight }`, or `null` on 404 (no index); 400 for a malformed key |
+| `getDeployer(base, keyHashHex)` | `GET /api/v1/deployer/:hash` | — | `DeployerInfo { block, indexedFromHeight }`, or `null` on 404 (no index); 400 for a malformed hash. Pass `exposure.deployer_key_hash(pubKey)`: sending the key would publish an unused key |
 | `faucetRequest(base, address)` | `POST /api/faucet` | `{ address }` | `FaucetResponse { deployId, amount, to }` |
 | `getCapabilities(base)` | `GET /api/v1/capabilities` | — | `NodeCapabilities { autopropose, proposeOnDeploy, manualPropose, adminHttp, devMode, faucet }` |
 | `getPooledDeploys(base)` | `GET /api/v1/deploys` | — | `PooledDeploys { deploys: [PooledDeploy] }` |
@@ -175,7 +175,7 @@ public the first time it signs a deploy. Value is safest behind a key that has n
 - **Is the key revealed?** `src/utils/exposure.ts` `check_exposure(node, pubKey)`. Evidence, in order:
   the wallet's own record (`mark_revealed`, called in `rnode.ts`'s signing path before every deploy is
   sent), the node's pool (`GET /api/v1/deploys`), then the node's deployer index
-  (`GET /api/v1/deployer/:pubkey`), which answers in one lookup. A reveal is remembered for good.
+  (`GET /api/v1/deployer/:hash`, asked by the key's blake2b256 hash so the check never publishes the key), which answers in one lookup. A reveal is remembered for good.
   `indexedFromHeight > 0` means the node is still backfilling older blocks after an upgrade, and is
   shown as "still indexing", never as "not seen". A node without the index is `unknown`: the wallet
   does not scan the chain instead.

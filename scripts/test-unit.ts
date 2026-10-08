@@ -413,7 +413,13 @@ async function main() {
             const found = await exposure.check_exposure("http://x", "0x" + target.pubKey.toUpperCase());
             check(found.state === "revealed" && found.record.source === "chain" && found.record.blockNumber === 75,
                 `a block from the index reveals the key (${JSON.stringify(found)})`);
-            check(asked === target.pubKey, "the index is asked with the bare lowercase key");
+            check(asked === exposure.deployer_key_hash(target.pubKey) && asked.length === 64,
+                "the index is asked by the key's blake2b256 hash, never the key");
+            check(!asked.includes(target.pubKey.slice(2, 20)), "the key itself is not in the request");
+            // The same vector rchain-rust pins for `deployer_index_key` (node/src/api/web_api_impl.rs).
+            check(exposure.deployer_key_hash("04".repeat(65))
+                === "b0ec3ad69aacbdc6499f533d58abd768331f5977fb42d302c3cf7f8a401e75f1",
+                "deployer_key_hash matches the node's index key");
 
             // Remembered: the node is not asked again.
             asked = "";

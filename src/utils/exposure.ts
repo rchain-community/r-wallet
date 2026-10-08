@@ -12,13 +12,17 @@
 //   1. this wallet signed a deploy with the key (recorded by `mark_revealed`, called from the signing
 //      path in rnode.ts before the deploy is sent);
 //   2. the node's deploy pool holds a deploy from the key (`GET /api/v1/deploys`);
-//   3. the node's deployer index (`GET /api/v1/deployer/{pubkey}`): a block containing a deploy the
-//      key signed, in one lookup. The index reaches down to `indexedFromHeight`; a node upgraded
-//      onto an existing chain backfills the blocks below that in the background, and until it has,
-//      "not seen" cannot be said — the answer is "still indexing", not a guess.
+//   3. the node's deployer index (`GET /api/v1/deployer/{hash}`): a block containing a deploy the
+//      key signed, in one lookup. The wallet asks by `blake2b256(public key)`, never by the key: a
+//      key that has not signed is still private, and sending it to the node would publish it. The
+//      index reaches down to `indexedFromHeight`; a node upgraded onto an existing chain backfills
+//      the blocks below that in the background, and a node that joined by state sync never holds
+//      them. Either way "not seen" cannot be said below that height — the answer is "partial", not
+//      a guess.
 // A revealed key is remembered for good, because a key that has been published cannot be
 // unpublished. A node without the index is "unknown": the wallet does not scan the chain instead.
 
+import blake from 'blakejs';
 import * as u from './utils';
 import { getDeployer, getPooledDeploys } from '../api/client';
 
@@ -38,13 +42,22 @@ export type Exposure =
     | { state: "revealed"; record: RevealRecord }
     /** No block on the chain contains a deploy from the key, and the pool holds none. */
     | { state: "not-seen" }
-    /** Not in any block from `indexedFrom` up; the node is still indexing the blocks below. */
+    /** Not in any block from `indexedFrom` up; the node has not indexed, or does not hold, the blocks below. */
     | { state: "indexing"; indexedFrom: number }
     | { state: "unknown"; error: string };
 
 /** The default warning threshold, in REV. Configurable on the Settings page. */
 export const DEFAULT_THRESHOLD_REV = 10;
 export const DROPS_PER_REV = 100_000_000;
+
+/**
+ * What the deployer index is keyed by, and what the wallet sends: `blake2b256` of the 65-byte key,
+ * as hex. It does not reveal the key, so checking an unused key leaves it unused.
+ */
+export function deployer_key_hash(pub_key: string): string {
+    const bytes = Uint8Array.from(normalize_key(pub_key).match(/../g) ?? [], b => parseInt(b, 16));
+    return blake.blake2bHex(bytes, undefined, 32);
+}
 
 /** Public keys as the node writes them: bare lowercase hex. */
 export function normalize_key(pub_key: string): string {
@@ -120,7 +133,7 @@ export async function check_exposure(node_url: string, pub_key: string): Promise
             // A node without `/api/v1/deploys` still answers the index lookup.
         }
 
-        const info = await getDeployer(node_url, key);
+        const info = await getDeployer(node_url, deployer_key_hash(key));
         if (info === null) {
             return { state: "unknown", error: "this node has no deployer index (GET /api/v1/deployer)" };
         }
@@ -150,9 +163,10 @@ export function describe_exposure(exposure: Exposure): string {
             return `Public key revealed: a deploy from this key is in block ${r.blockNumber}.`;
         }
         case "not-seen":
-            return "Public key not seen on chain: this key has never signed a deploy in a block.";
+            return "Public key not seen: no block on this node carries a deploy it signed.";
         case "indexing":
-            return `Public key not seen from block ${exposure.indexedFrom} up; the node is still indexing older blocks, so check again later.`;
+            return `Public key not seen in this node's blocks from ${exposure.indexedFrom} up. It has not indexed `
+                + "or does not hold the older blocks; check again later, or ask a node that holds the whole chain.";
         case "unknown":
             return `Could not check whether the public key is revealed: ${exposure.error}`;
     }

@@ -106,12 +106,13 @@ export async function getBlock(url: string, hash: string): Promise<BlockInfo> {
     return res.json as BlockInfo;
 }
 
-// `GET /api/v1/deployer/:pubkey` — the node's deployer index: a block containing a deploy the key
+// `GET /api/v1/deployer/:hash` — the node's deployer index: a block containing a deploy the key
 // signed (so the key is public), or null, and the height the index reaches down to (0 = complete).
-// Returns null on 404, so a node without the index degrades instead of erroring; a malformed key is
-// a 400, surfaced by `ensureOk`.
-export async function getDeployer(url: string, pubKeyHex: string): Promise<DeployerInfo | null> {
-    const res = await httpFetch("GET", api(url, `v1/deployer/${pubKeyHex}`));
+// Takes the hex blake2b256 hash of the public key (`exposure.deployer_key_hash`), never the key:
+// asking about an unused key must not publish it. Returns null on 404, so a node without the index
+// degrades instead of erroring; a malformed hash is a 400, surfaced by `ensureOk`.
+export async function getDeployer(url: string, keyHashHex: string): Promise<DeployerInfo | null> {
+    const res = await httpFetch("GET", api(url, `v1/deployer/${keyHashHex}`));
     if (res.status === 404) return null;
     ensureOk(res);
     return res.json as DeployerInfo;
