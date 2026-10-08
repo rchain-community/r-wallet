@@ -6,5 +6,6 @@ export * as notif from './notifications';
 export * as faucet_login from './faucet-login';
 export * as rho from './rho';
 export * as tx from './transactions';
+export * as exposure from './exposure';
 export * from './utils';
 

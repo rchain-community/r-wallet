@@ -70,6 +70,7 @@ One convention in `client.ts`: `httpFetch(METHOD, path, body?) → ensureOk → 
 | `propose` | `POST /api/propose` (admin, no body) |
 | `dataAtName` | `POST /api/data-at-name` |
 | `getBlock` | `GET /api/block/:hash` |
+| `getDeployer` | `GET /api/v1/deployer/:hash` (deployer index, asked by `blake2b256(pubkey)`, never the key; `null` on 404) |
 | `faucetRequest` | `POST /api/faucet` |
 | `getCapabilities` | `GET /api/v1/capabilities` |
 | `getPooledDeploys` | `GET /api/v1/deploys` |
@@ -158,6 +159,11 @@ signed protobuf** (field 12) — omit the field for an ordinary deploy.
     strings**, signed as protobuf field **12** (`src/api/sign.ts`) and exposed to
     rholang as `rho:attachment:1`, `rho:attachment:2`, … Omitting the field when
     empty keeps pre-#39 signatures and deploy ids byte-identical.
+
+12. **Quantum key hygiene** — every signed deploy goes through `sendDeploy` in `rnode.ts`, which
+    records the signing key as revealed (`exposure.mark_revealed`) before sending. A new signing path
+    must do the same, or the exposure panel will call a public key unseen. See `docs/DEVELOPER.md`
+    *Quantum key hygiene*.
 
 ## Known node-side issues (out of scope here, in `~/rchain-rust`)
 

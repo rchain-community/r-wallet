@@ -5,7 +5,7 @@
 import * as u from './utils';
 import { deployStatus, getPooledDeploys } from '../api/client';
 
-export type TxKind = "deploy" | "transfer" | "faucet" | "bond" | "unbond" | "trust" | "delegate" | "undelegate";
+export type TxKind = "deploy" | "transfer" | "faucet" | "bond" | "unbond" | "trust" | "delegate" | "undelegate" | "sweep";
 export type TxStatus = "pending" | "finalized" | "failed";
 
 export interface TransactionRecord {

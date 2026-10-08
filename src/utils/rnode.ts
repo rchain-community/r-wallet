@@ -6,7 +6,9 @@
 
 import * as u from './utils';
 import * as rho from './rho';
+import * as bc from './blockchain';
 import { add_tx, type TxKind } from './transactions';
+import { mark_revealed } from './exposure';
 import {
     deploy as apiDeploy,
     deployStatus,
@@ -59,6 +61,10 @@ async function sendDeploy(
     }
 
     const signed = signDeploy(deployData, account.privKey);
+    // The signed deploy carries the public key (`deployer`), so from here on the key is public
+    // (src/utils/exposure.ts). Recorded before sending: a deploy whose response is lost may still
+    // have reached the node. The deploy id is the signature.
+    mark_revealed(signed.deployer, { source: "signed-here", deployId: signed.signature });
     const deployId = await apiDeploy(url, signed);
     return { deployId, signed };
 }
@@ -211,6 +217,44 @@ export async function deploy(
         attachments
     );
 }
+
+// --- Quantum key hygiene ------------------------------------------------------
+// Move the whole balance of `wallet` to `to_rev_addr` in one deploy (`rho.fn_sweep`). The caller is
+// responsible for `to_rev_addr` being fresh — a key that has never signed — and for its private key
+// being saved before this is called; see the Dashboard's sweep action.
+export async function sweep(
+    node_url: string,
+    wallet: u.NamedWallet & { privKey?: string },
+    to_rev_addr: string
+): Promise<DeployResult> {
+    if (!wallet.privKey) {
+        return { deployId: null, expr: null, error: "Selected account doesn't have private key and cannot be used for signing." };
+    }
+    // The address `getBalance` reads must be the vault `transfer` spends, which is derived from the
+    // signing key — so derive it from the key rather than trust the stored `revAddr`.
+    const from = await bc.get_account_from_private_key(wallet.privKey);
+    if (!from) {
+        return { deployId: null, expr: null, error: "Could not derive this account's address from its key." };
+    }
+    if (!(await bc.is_valid_rev_address(to_rev_addr))) {
+        return { deployId: null, expr: null, error: `Not a valid address: ${to_rev_addr}` };
+    }
+    if (to_rev_addr === from.revAddr) {
+        return { deployId: null, expr: null, error: "The sweep target is this account's own address." };
+    }
+    return run_deploy(
+        node_url, wallet, rho.fn_sweep(from.revAddr, to_rev_addr), SWEEP_PHLO_LIMIT, "sweep",
+        `Sweep whole balance to ${to_rev_addr.slice(0, 12)}…`
+    );
+}
+
+/**
+ * Phlo limit for a sweep. The unused part is refunded to the *old* address after the deploy, so this
+ * bounds the dust left behind (at most 0.0002 REV at a phlo price of 1). Measured on a local node
+ * (`scripts/probe-sweep.mts`): a sweep costs about 3,000 phlo, so this leaves a wide margin; a sweep
+ * that ran out would fail whole, moving nothing.
+ */
+export const SWEEP_PHLO_LIMIT = 20000;
 
 // --- Proof of Stake -----------------------------------------------------------
 // Self-bond/unbond via the native `rho:rchain:pos`. Both take the caller's own `deployerId`, so

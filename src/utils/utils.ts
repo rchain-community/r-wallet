@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, JSXElementConstructor, JSX, Dispatch, SetS
 import { useNavigate } from "react-router-dom";
 import type { nw } from "utils";
 import type { TransactionRecord } from "./transactions";
+import type { RevealRecord } from "./exposure";
 
 export type Unbox<T> = T extends PromiseLike<infer U> ? Unbox<U> : T;
 
@@ -72,7 +73,11 @@ export type UserMetaMaskWallet = NamedWallet & MetaMaskWallet;
 
 interface LocallyStored {
 	"custom-nodes": nw.Named_Node[],
-	"tx-list": TransactionRecord[]
+	"tx-list": TransactionRecord[],
+	// Quantum key hygiene (src/utils/exposure.ts): keys known to be public, and the warning
+	// threshold in REV.
+	"revealed-keys": Record<string, RevealRecord>,
+	"exposure-threshold": number
 };
 
 type LS_Callbacks = {

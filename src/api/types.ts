@@ -132,6 +132,14 @@ export interface DeployRequest {
     sigAlgorithm: string;
 }
 
+/** `GET /api/v1/deployer/:hash` (the node's deployer index, asked by the key's blake2b256 hash). */
+export interface DeployerInfo {
+    /** A block containing a deploy this key signed, or null when no indexed block has one. */
+    block: LightBlockInfo | null;
+    /** The index covers every height from here up; 0 means complete, above 0 it is still backfilling. */
+    indexedFromHeight: number;
+}
+
 export interface FaucetResponse {
     deployId: string;
     amount: number;

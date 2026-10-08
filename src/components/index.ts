@@ -15,3 +15,4 @@ export * from './toggle-button/ToggleButton';
 export * from './transaction-feed/TransactionFeed';
 export * from './transaction-list/TransactionList';
 
+export * from './key-exposure/KeyExposure';

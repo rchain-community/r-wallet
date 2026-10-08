@@ -4,10 +4,12 @@ import { useLayout } from 'Context';
 import { PassConfirmModal } from 'components';
 import * as u from 'utils';
 import * as Components from 'components';
+import { BRAND } from '../../../config/branding';
 
 export function Settings() {
   const layout = useLayout();
   const [keystore_op, set_keystore_op] = useState(u.OPERATION.INITIAL);
+  const [threshold, set_threshold] = useState(String(u.exposure.get_threshold_rev()));
 
   let navigate = u.useNavigateIf(!u.g.user, "/access");
   u.useNavigateIf(u.wallet_is_metamask(u.g.user), "/balance", navigate);
@@ -73,11 +75,40 @@ export function Settings() {
     </>;
   }
 
+  function write_threshold(evt: React.ChangeEvent<HTMLInputElement>) {
+    set_threshold(evt.target.value);
+    const rev = Number(evt.target.value);
+    if (evt.target.value !== "" && Number.isFinite(rev) && rev >= 0) {
+      u.exposure.set_threshold_rev(rev);
+    }
+  }
+
+  function QuantumExposure() {
+    return <>
+      <h3>Quantum exposure warning</h3>
+      <p>
+        Signing a deploy publishes an account's public key. The wallet warns when an account whose
+        key is public holds more than this many {BRAND.ticker}, and offers to sweep it to a fresh
+        address.
+      </p>
+      <label title={`THRESHOLD (${BRAND.ticker})`} className="mt-2 mb-16">
+        <input
+          type="number"
+          min="0"
+          step="any"
+          value={threshold}
+          onChange={write_threshold}
+        />
+      </label>
+    </>;
+  }
+
   return (
     <Components.Strip bg="">
       <h2 className="sm:mt-16">Settings</h2>
       <div className="Body Settings">
         <AccessMethods />
+        {QuantumExposure()}
       </div>
     </Components.Strip>
   );
