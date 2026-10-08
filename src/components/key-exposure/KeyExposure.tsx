@@ -3,7 +3,7 @@
 // a fresh, never-used address. The logic lives in src/utils/exposure.ts and `rnode.sweep`; this is
 // the UI. Background: rchain-rust docs/src/contributor/post-quantum-plan.md §16.1.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLayout, useNodes } from "Context";
 import * as u from "utils";
 import { rhoExprToJson } from "api";
@@ -29,14 +29,28 @@ export function KeyExposure(props: KeyExposureProps) {
     const user = u.g.user;
     const pub_key = user && u.wallet_is_private(user) ? user.pubKey : null;
 
+    // Only the latest check may update the panel: a slow answer about the previous account or node
+    // would otherwise be shown, and warned on, against the current account's balance.
+    const checker = useMemo(() => u.exposure.latest_only(u.g.check_exposure), []);
+
     async function check() {
-        if (!pub_key) return;
+        set_exposure(null);
+        if (!pub_key) {
+            checker.cancel();
+            set_check_op(u.OPERATION.INITIAL);
+            return;
+        }
         set_check_op(u.OPERATION.PENDING);
-        set_exposure(await u.g.check_exposure(node_context, pub_key));
+        const result = await checker.run(node_context, pub_key);
+        if (result === null) return;
+        set_exposure(result);
         set_check_op(u.OPERATION.DONE);
     }
 
-    useEffect(() => { check(); }, [node_context.node, pub_key]);
+    useEffect(() => {
+        check();
+        return checker.cancel;
+    }, [node_context.node, pub_key]);
 
     // A MetaMask account has no key here to reveal or sweep with.
     if (!user || !pub_key || !u.wallet_is_private(user)) return <></>;

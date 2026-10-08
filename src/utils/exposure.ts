@@ -40,10 +40,13 @@ export interface RevealRecord {
 
 export type Exposure =
     | { state: "revealed"; record: RevealRecord }
-    /** No block on the chain contains a deploy from the key, and the pool holds none. */
-    | { state: "not-seen" }
+    /**
+     * No block this node holds contains a deploy from the key, and the pool holds none. With
+     * `poolUnread` the pool could not be read, so a deploy waiting there is not ruled out.
+     */
+    | { state: "not-seen"; poolUnread?: true }
     /** Not in any block from `indexedFrom` up; the node has not indexed, or does not hold, the blocks below. */
-    | { state: "indexing"; indexedFrom: number }
+    | { state: "indexing"; indexedFrom: number; poolUnread?: true }
     | { state: "unknown"; error: string };
 
 /** The default warning threshold, in REV. Configurable on the Settings page. */
@@ -121,7 +124,10 @@ export async function check_exposure(node_url: string, pub_key: string): Promise
     if (known) return { state: "revealed", record: known };
 
     try {
-        // The pool first: it catches a deploy signed elsewhere that is not in a block yet.
+        // The pool first: it catches a deploy signed elsewhere that is not in a block yet. A pool that
+        // cannot be read does not stop the index lookup (a block hit is still conclusive), but a
+        // negative answer then says the pool went unchecked rather than passing for a full one.
+        let pool_unread = false;
         try {
             const pool = await getPooledDeploys(node_url);
             const hit = pool.deploys.find(d => normalize_key(d.deployer) === key);
@@ -130,7 +136,7 @@ export async function check_exposure(node_url: string, pub_key: string): Promise
                 return { state: "revealed", record: revealed_keys[key] };
             }
         } catch {
-            // A node without `/api/v1/deploys` still answers the index lookup.
+            pool_unread = true;
         }
 
         const info = await getDeployer(node_url, deployer_key_hash(key));
@@ -145,16 +151,41 @@ export async function check_exposure(node_url: string, pub_key: string): Promise
             });
             return { state: "revealed", record: revealed_keys[key] };
         }
+        const pool = pool_unread ? { poolUnread: true as const } : {};
         return info.indexedFromHeight > 0
-            ? { state: "indexing", indexedFrom: info.indexedFromHeight }
-            : { state: "not-seen" };
+            ? { state: "indexing", indexedFrom: info.indexedFromHeight, ...pool }
+            : { state: "not-seen", ...pool };
     } catch (err) {
         return { state: "unknown", error: u.error_string(err) };
     }
 }
 
+/**
+ * Wraps a check so that only the most recent call's result is used: an earlier call that resolves
+ * later returns `null`, as does any call pending when `cancel` runs. The panel uses it so that a
+ * slow check for the previous account or node never lands on the current one.
+ */
+export function latest_only<A extends unknown[], R>(fn: (...args: A) => Promise<R>) {
+    let seq = 0;
+    return {
+        run: async (...args: A): Promise<R | null> => {
+            const mine = ++seq;
+            const result = await fn(...args);
+            return mine === seq ? result : null;
+        },
+        cancel: () => { seq++; },
+    };
+}
+
+const POOL_UNREAD_NOTE = " The node's deploy pool could not be read, so a deploy still waiting there would not show.";
+
 /** One line for the UI. */
 export function describe_exposure(exposure: Exposure): string {
+    return describe_state(exposure)
+        + ((exposure.state === "not-seen" || exposure.state === "indexing") && exposure.poolUnread ? POOL_UNREAD_NOTE : "");
+}
+
+function describe_state(exposure: Exposure): string {
     switch (exposure.state) {
         case "revealed": {
             const r = exposure.record;

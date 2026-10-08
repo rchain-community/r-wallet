@@ -392,6 +392,22 @@ async function main() {
         check(!exposure.should_warn(revealed, null, 10), "should_warn: unknown balance does not warn");
         check(exposure.get_threshold_rev() === exposure.DEFAULT_THRESHOLD_REV, "threshold defaults without localStorage");
 
+        // Out-of-order answers: only the latest check counts, and cancel drops a pending one.
+        {
+            const gates: Array<(v: string) => void> = [];
+            const slow = exposure.latest_only((_: string) => new Promise<string>(res => gates.push(res)));
+            const first = slow.run("old account");
+            const second = slow.run("new account");
+            gates[1]("new");
+            gates[0]("old");
+            check(await second === "new", "latest_only: the latest check's result is used");
+            check(await first === null, "latest_only: an earlier check that resolves later is dropped");
+            const pending = slow.run("switched away");
+            slow.cancel();
+            gates[2]("late");
+            check(await pending === null, "latest_only: cancel drops a pending check");
+        }
+
         // The deployer index: one lookup, read three ways.
         const target = await bc.create_account();
         const other = await bc.create_account();
@@ -445,6 +461,20 @@ async function main() {
                 : new Response("not found", { status: 404 })) as typeof fetch;
             const pooled = await exposure.check_exposure("http://x", other.pubKey);
             check(pooled.state === "revealed" && pooled.record.source === "pool", "a pooled deploy reveals the key");
+
+            // A pool that cannot be read leaves a negative answer marked, not passed off as complete.
+            const quiet = await bc.create_account();
+            if (!quiet) throw new Error("create_account failed");
+            globalThis.fetch = (async (url: RequestInfo | URL) => String(url).endsWith("/api/v1/deploys")
+                ? new Response("boom", { status: 500 })
+                : new Response(JSON.stringify({ block: null, indexedFromHeight: 0 }), { status: 200 })) as typeof fetch;
+            const no_pool = await exposure.check_exposure("http://x", quiet.pubKey);
+            check(no_pool.state === "not-seen" && no_pool.poolUnread === true,
+                `an unreadable pool marks not-seen as pool-unread (${JSON.stringify(no_pool)})`);
+            check(exposure.describe_exposure(no_pool).includes("pool could not be read"), "the pool-unread note is shown");
+            globalThis.fetch = index_fetch({ block: null, indexedFromHeight: 0 });
+            const pool_read = await exposure.check_exposure("http://x", quiet.pubKey);
+            check(pool_read.state === "not-seen" && !("poolUnread" in pool_read), "a read pool leaves not-seen unmarked");
 
             // The node being unreachable is "unknown", never "not seen".
             globalThis.fetch = (async () => new Response("boom", { status: 500 })) as typeof fetch;
